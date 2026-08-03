@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Unit Test Lite Orchestrator"
+  short_description: "以 Author 與 Verifier 產生高覆蓋率 Unit Test"
+  default_prompt: "Use $dotnet-testing-lite-orchestrator-unit to generate and verify Unit Tests for the specified target with the lite workflow."

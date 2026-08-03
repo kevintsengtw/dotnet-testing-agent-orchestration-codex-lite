@@ -1,0 +1,29 @@
+# .NET build/test
+**/bin/
+**/obj/
+**/TestResults/
+*.trx
+*.coverage
+coverage*.xml
+coverage*.json
+
+# Lite workflow artifacts
+**/.orchestrator/
+.workflow/
+
+# Generated tests in the blank practice projects
+samples/unit/practice/tests/**/*Tests.cs
+samples/unit/practice/tests/**/GlobalUsings.cs
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+.DS_Store
+
+# Tooling
+node_modules/
+artifacts/
+*.binlog

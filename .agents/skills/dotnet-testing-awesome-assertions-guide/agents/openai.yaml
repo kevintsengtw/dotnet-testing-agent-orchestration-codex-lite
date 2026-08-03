@@ -1,0 +1,4 @@
+interface:
+  display_name: "AwesomeAssertions Guide"
+  short_description: "以 AwesomeAssertions 撰寫精確可讀的斷言"
+  default_prompt: "Use $dotnet-testing-awesome-assertions-guide to write precise readable assertions."

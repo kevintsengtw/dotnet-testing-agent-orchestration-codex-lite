@@ -1,0 +1,4 @@
+interface:
+  display_name: "NSubstitute Mocking"
+  short_description: "NSubstitute stubs、mocks 與 interaction 驗證"
+  default_prompt: "Use $dotnet-testing-nsubstitute-mocking to isolate dependencies with NSubstitute."
