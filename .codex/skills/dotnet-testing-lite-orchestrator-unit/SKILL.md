@@ -7,6 +7,16 @@ description: Codex Lite 專屬 .NET Unit Test workflow；以兩個 self-containe
 
 你只負責調度與摘要，不讀 source、不寫 tests、不直接執行 `dotnet`。
 
+## 不變式
+
+- topology 固定 `Orchestrator → Author → Verifier`；coverage 有可合理補足的缺口
+  時，最多再一次 `Author repair → Verifier final`。
+- 每個 target 只派一個 Author，不依 method 或 scenario 切分，不得恢復多角色或
+  split Writer。
+- 每個 target 各有且只有一次 repair 額度。
+- 所有正式 subagent 使用 `fork_turns: "none"`。
+- Verifier 對 test files 與 production source 唯讀；任何變更都是越權。
+
 ## 必要輸入
 
 - target source path
@@ -32,6 +42,7 @@ description: Codex Lite 專屬 .NET Unit Test workflow；以兩個 self-containe
    - `.orchestrator/baseline/<Target>.{production,tests}.json`
    - `.orchestrator/author/<Target>.author.json`
    - `.orchestrator/verification/<Target>.{project,coverage}.json`
+   - `.orchestrator/verification/<Target>.token-estimate.json`
    - `.orchestrator/repair/<Target>.json`
    - `.orchestrator/handoff/<Target>.final.json`
 3. 若同一請求有多個 target，先依正規化後的 `testProjectPath` 分組。同一 test
@@ -45,7 +56,9 @@ description: Codex Lite 專屬 .NET Unit Test workflow；以兩個 self-containe
 5. 使用 `fork_turns: "none"` dispatch `.codex/agents/dotnet-testing-lite-unit-author.toml`，
    `mode: initial`；payload 只傳上述 paths，不內聯 manifest。
 6. Author 後依序執行 `check-unit-author-result.mjs`、`check-test-project.mjs`；
-   任一非零立即停止。
+   任一非零立即停止。`completed` 與 `partial` 都通過後續 hash capture 並
+   dispatch Verifier；`partial` 不由 Main 改寫結果，讓 Verifier 以獨立實測核對
+   Author 的 status 與 test counts，再依契約決定 `needs_repair|fail`。
    通過後以 `check-test-integrity.mjs capture` 保存 test hashes，才用
    `fork_turns: "none"` dispatch
    `.codex/agents/dotnet-testing-lite-unit-verifier.toml`，payload 使用
@@ -58,28 +71,36 @@ description: Codex Lite 專屬 .NET Unit Test workflow；以兩個 self-containe
    deterministic script telemetry，並把沒有 snapshot 的 `pre-phase` 降為
    `post-phase`、留下 warning；不得為了修正 telemetry 重派 agent 或耗用 repair。
    不得猜測執行次數/耗時。
-   若 Author artifact 是 `no_valuable_tests`，test-project gate 使用
-   `--allow-no-test-files`，仍 dispatch 該 Verifier 做獨立 suitability review，
-   但不執行 build/test/coverage。確認後以 `not_suitable` 正常終止；
-   不進 repair，也不得由 Main 或 Author 單方面宣告成功。
+   若 Author artifact 是 `no_valuable_tests|blocked`，test-project gate 使用
+   `--allow-no-test-files`，略過 test hash capture，仍 dispatch 該 Verifier 做獨立
+   review，但不執行 build/test/coverage。`no_valuable_tests` 確認後以
+   `not_suitable` 正常終止；`blocked` 只有在 Verifier 重新確認 public 行為可觀察、
+   不改 production 無法隔離、constructor injection／abstraction overload／
+   overridable hook 全不存在，且重構建議具體時，才以 `blocked` 正常終止。
+   兩者都不進 repair，也不得由 Main 或 Author 單方面宣告成功；若找到任一 seam，
+   Verifier 必須拒絕 blocker。
 7. 每次 Verifier 回傳後，先執行
    `scripts/check-test-integrity.mjs verify --manifest ...`；任何 test file 變更都
    是角色越權，立即 `fail`。再以目前磁碟內容重跑 author-result gate（含 user
    scenarios）與 test-project gate；失敗同樣以 `fail` 結束。
 8. 若 initial Verifier 的 coverage／quality／test-delivery `needs_repair` 已通過
    result gate：
-   - 全 workflow 只允許一次 repair。
+   - 每個 target 只允許一次 repair。
    - test failure 必須有 `repairEligibility.scope="test-delivery"`；不得自行改判
      `fail` 或來源不明的失敗。
    - dispatch 同一 Author，`mode: repair`，只傳 repair manifest、既有 author
-     result與必要 paths。
+     result與必要 paths。repair manifest 內的 `shortCircuitTruthTable`、
+     `arrangementConstraint` 與 nullable warning action 必須原樣保留，不得在
+     compact payload 中省略。
    - 重跑 author-result、test-project gates，重新 capture Author test hashes，再
      dispatch Verifier，`isFinal: true`。若是 project-config-only build repair，
      先執行 `scripts/create-final-verifier-handoff.mjs`，只傳 handoff path，避免
      Verifier 重讀 author、initial verification 與 repair artifacts。
-9. 其他結果直接結束。用 `.codex/scripts/estimate-token-usage.mjs --test-project
-   <testProjectPath> --target <Target>` 產生 target estimate；缺任一 terminal
-   observation 時 telemetry 標示 unavailable，不得修 artifact 或重派 agent。
+9. 其他結果直接結束。用 `.codex/scripts/lite-estimate-token-usage.mjs --test-project
+   <testProjectPath> --target <Target> --output
+   <orchestratorRoot>/verification/<Target>.token-estimate.json` 產生 target estimate；
+   唯一正式檔名是 `<Target>.token-estimate.json`，不得改寫成 `token-usage` 變體。
+   缺任一 terminal observation 時 telemetry 標示 unavailable，不得修 artifact 或重派 agent。
    再以 `scripts/record-workflow-run.mjs finish` 記錄總耗時；
    provider 未提供 token 時保持 `providerActualTokens: unavailable`。不得恢復四角色、split Writer。
 
@@ -116,3 +137,5 @@ Duration:
 100% 是預設目標。未達 100% 但只剩明確不可合理覆蓋項目時，誠實回報 `best_effort` 與原因，不得宣稱完整覆蓋。
 若 decision 是 `not_suitable`，Build/Test 與 coverage 顯示 `not run / not
 applicable`，並列出 Verifier 確認的原因；不得換算成 0% 或品質分數。
+若 decision 是 `blocked`，同樣顯示 `not run / not applicable`，並逐字列出
+Verifier 確認的 blocker、三類 seam 證據與具體重構建議；不得標為 workflow fail。

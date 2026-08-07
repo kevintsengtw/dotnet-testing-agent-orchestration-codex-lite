@@ -40,6 +40,10 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 - `uncoveredBranches`
 - verifier的 `repairable` / `uncoverable`
 
+每個 `uncoverable` 都必須附公開 API 反證。`When`／`Unless` 的 `&&`、`||`
+短路條件若可用不同公開輸入控制任一 operand，會由 gate 拒絕並要求列為
+`repairable`；只有確實被外層條件阻斷的內部分支才能保留為 `uncoverable`。
+
 workflow 對 coverage 與 quality 共用一次 repair 額度，避免 token 無上限成長。
 
 Author result 的 `scenarioPlan` 會保留每個 scenario 的 ID、category、priority、名稱、預期行為、覆蓋規則、oracle、需求來源、implementation-detail 判斷與 test method。類別至少區分 happy、boundary、exception、branch、state、characterization；沒有適用情境時可不建立空泛測試，但需由分析明確排除。

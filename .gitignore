@@ -9,7 +9,11 @@ coverage*.json
 
 # Lite workflow artifacts
 **/.orchestrator/
-.workflow/
+.workflow/**
+!.workflow/*/
+!.workflow/*/normalize*.mjs
+!.workflow/*/measure-*.mjs
+.workflow/practice-lite-static-reduction-validation/normalize-results.mjs
 
 # Generated tests in the blank practice projects
 samples/unit/practice/tests/**/*Tests.cs

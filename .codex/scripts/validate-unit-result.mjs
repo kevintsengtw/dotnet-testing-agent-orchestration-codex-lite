@@ -19,6 +19,99 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const errors = [];
 if (manifest.schemaVersion !== 1) errors.push("schemaVersion must be 1");
 const notSuitable = manifest.coverageDecision?.status === "not_suitable";
+const blocked = manifest.coverageDecision?.status === "blocked";
+
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function validateBlockerDetails(details, prefix) {
+  if (!nonEmptyString(details?.reason)) errors.push(`${prefix}.reason is required`);
+  const behaviors = Array.isArray(details?.publicBehaviors) ? details.publicBehaviors : [];
+  if (behaviors.length === 0) errors.push(`${prefix}.publicBehaviors must not be empty`);
+  for (const [index, behavior] of behaviors.entries()) {
+    for (const field of ["behavior", "observableVia", "isolationObstacle"]) {
+      if (!nonEmptyString(behavior?.[field])) {
+        errors.push(`${prefix}.publicBehaviors[${index}].${field} is required`);
+      }
+    }
+  }
+  for (const seam of ["constructorInjection", "abstractionOverload", "overridableHook"]) {
+    if (details?.seamAudit?.[seam]?.available !== false) {
+      errors.push(`${prefix}.seamAudit.${seam}.available must be false`);
+    }
+    if (!nonEmptyString(details?.seamAudit?.[seam]?.evidence)) {
+      errors.push(`${prefix}.seamAudit.${seam}.evidence is required`);
+    }
+  }
+  if (details?.productionChangeRequired !== true) {
+    errors.push(`${prefix}.productionChangeRequired must be true`);
+  }
+  if (details?.productionModificationInScope !== false) {
+    errors.push(`${prefix}.productionModificationInScope must be false`);
+  }
+  const recommendations = Array.isArray(details?.recommendations) ? details.recommendations : [];
+  if (recommendations.length === 0) errors.push(`${prefix}.recommendations must not be empty`);
+  const seamKinds = new Set(["time", "filesystem", "output-path", "dependency-injection", "other"]);
+  for (const [index, recommendation] of recommendations.entries()) {
+    if (!seamKinds.has(recommendation?.seam)) {
+      errors.push(`${prefix}.recommendations[${index}].seam is invalid`);
+    }
+    if (!nonEmptyString(recommendation?.action)) {
+      errors.push(`${prefix}.recommendations[${index}].action is required`);
+    }
+  }
+}
+
+function validateUncoverable(items) {
+  for (const [index, item] of items.entries()) {
+    const prefix = `coverageDecision.uncoverable[${index}]`;
+    if (typeof item?.reason !== "string" || item.reason.length === 0) {
+      errors.push(`${prefix}.reason is required`);
+    }
+
+    const evidence = item?.publicApiEvidence;
+    if (!evidence || typeof evidence !== "object") {
+      errors.push(`${prefix}.publicApiEvidence is required`);
+      continue;
+    }
+    for (const field of ["entryPoint", "unreachableBecause"]) {
+      if (typeof evidence[field] !== "string" || evidence[field].length === 0) {
+        errors.push(`${prefix}.publicApiEvidence.${field} is required`);
+      }
+    }
+    if (!["none", "&&", "||"].includes(evidence.shortCircuitOperator)) {
+      errors.push(`${prefix}.publicApiEvidence.shortCircuitOperator is invalid`);
+      continue;
+    }
+    if (!Array.isArray(evidence.operands)) {
+      errors.push(`${prefix}.publicApiEvidence.operands must be an array`);
+      continue;
+    }
+    if (evidence.shortCircuitOperator === "none") {
+      if (evidence.operands.length !== 0) {
+        errors.push(`${prefix}.publicApiEvidence.operands must be empty without short-circuit`);
+      }
+      continue;
+    }
+    if (evidence.operands.length < 2) {
+      errors.push(`${prefix}.publicApiEvidence.operands must describe every short-circuit operand`);
+    }
+    for (const [operandIndex, operand] of evidence.operands.entries()) {
+      const operandPrefix = `${prefix}.publicApiEvidence.operands[${operandIndex}]`;
+      for (const field of ["expression", "publicInput"]) {
+        if (typeof operand?.[field] !== "string" || operand[field].length === 0) {
+          errors.push(`${operandPrefix}.${field} is required`);
+        }
+      }
+      if (typeof operand?.independentlyControllable !== "boolean") {
+        errors.push(`${operandPrefix}.independentlyControllable must be boolean`);
+      } else if (operand.independentlyControllable) {
+        errors.push(`${operandPrefix} is publicly controllable and must be repairable`);
+      }
+    }
+  }
+}
 
 if (notSuitable) {
   if (!requireQuality) errors.push("not_suitable requires --require-quality");
@@ -101,11 +194,7 @@ if (notSuitable) {
       manifest.coverageDecision.uncoverable.length === 0) {
     errors.push("not_suitable requires uncoverable reasons");
   } else {
-    for (const [index, item] of manifest.coverageDecision.uncoverable.entries()) {
-      if (typeof item?.reason !== "string" || item.reason.length === 0) {
-        errors.push(`coverageDecision.uncoverable[${index}].reason is required`);
-      }
-    }
+    validateUncoverable(manifest.coverageDecision.uncoverable);
   }
   if (manifest.isFinal !== true) errors.push("not_suitable must be final");
 
@@ -120,6 +209,86 @@ if (notSuitable) {
     goalMet: null,
     qualityScore: null,
     decision: "not_suitable",
+  }));
+  process.exit(0);
+}
+
+if (blocked) {
+  if (!requireQuality) errors.push("blocked requires --require-quality");
+  if (manifest.status !== "blocked") errors.push("status must be blocked");
+  if (manifest.build?.status !== "not_run") errors.push("blocked build must be not_run");
+  if (manifest.test?.status !== "not_run") errors.push("blocked test must be not_run");
+  if (manifest.coverage?.status !== "not_applicable") {
+    errors.push("blocked coverage must be not_applicable");
+  }
+  if (manifest.goal?.status !== "not_applicable") errors.push("blocked goal must be not_applicable");
+  if (manifest.quality?.status !== "not_applicable") {
+    errors.push("blocked quality must be not_applicable");
+  }
+  if (!Array.isArray(manifest.quality?.issues) || manifest.quality.issues.length !== 0) {
+    errors.push("blocked quality.issues must be empty");
+  }
+  if (manifest.qualityScore !== null) errors.push("blocked qualityScore must be null");
+  if (manifest.projectValidation?.status !== "passed") errors.push("projectValidation must pass");
+  if (manifest.productionIntegrity?.status !== "passed") errors.push("productionIntegrity must pass");
+  if (!Number.isFinite(manifest.durationMs) || manifest.durationMs <= 0) {
+    errors.push("durationMs must be greater than zero");
+  }
+  if (
+    manifest.testValue?.status !== "blocked" ||
+    !Array.isArray(manifest.testValue?.valuableMethods) ||
+    manifest.testValue.valuableMethods.length !== 0 ||
+    !Array.isArray(manifest.testValue?.lowValueMethods) ||
+    manifest.testValue.lowValueMethods.length !== 0
+  ) {
+    errors.push("blocked testValue must contain empty valuable and low-value methods");
+  }
+  const deliverables = manifest.deliverables;
+  if (!deliverables?.testProjectPath || !fs.existsSync(deliverables.testProjectPath)) {
+    errors.push("deliverables.testProjectPath must exist");
+  }
+  if (!Array.isArray(deliverables?.testFilePaths) || deliverables.testFilePaths.length !== 0) {
+    errors.push("blocked deliverables.testFilePaths must be empty");
+  }
+  if (!manifest.authorResultPath || !fs.existsSync(manifest.authorResultPath)) {
+    errors.push("blocked authorResultPath must exist");
+  } else {
+    try {
+      const authorResult = JSON.parse(fs.readFileSync(manifest.authorResultPath, "utf8"));
+      if (authorResult.status !== "blocked") errors.push("author result must have blocked status");
+      validateBlockerDetails(authorResult.blocker, "authorResult.blocker");
+    } catch (error) {
+      errors.push(`author result is invalid: ${error.message}`);
+    }
+  }
+  if (manifest.blockerReview?.status !== "confirmed") {
+    errors.push("blockerReview.status must be confirmed");
+  }
+  validateBlockerDetails(manifest.blockerReview, "blockerReview");
+  if (!nonEmptyString(manifest.coverageDecision?.reason)) {
+    errors.push("blocked coverageDecision.reason is required");
+  }
+  if (!Array.isArray(manifest.coverageDecision?.repairable) ||
+      manifest.coverageDecision.repairable.length !== 0) {
+    errors.push("blocked coverageDecision.repairable must be empty");
+  }
+  if (!Array.isArray(manifest.coverageDecision?.uncoverable) ||
+      manifest.coverageDecision.uncoverable.length !== 0) {
+    errors.push("blocked coverageDecision.uncoverable must be empty");
+  }
+  if (manifest.isFinal !== true) errors.push("blocked must be final");
+
+  if (errors.length > 0) {
+    console.error(`validate-unit-result failed:\n- ${errors.join("\n- ")}`);
+    process.exit(1);
+  }
+  console.log(JSON.stringify({
+    status: "passed",
+    line: null,
+    branch: null,
+    goalMet: null,
+    qualityScore: null,
+    decision: "blocked",
   }));
   process.exit(0);
 }
@@ -220,16 +389,42 @@ if (requireQuality) {
   }
   const classifiedMethods = new Set();
   let authorScenarios = new Map();
+  let authorResult = null;
   if (!manifest.authorResultPath || !fs.existsSync(manifest.authorResultPath)) {
     errors.push("authorResultPath must exist");
   } else {
     try {
-      const authorResult = JSON.parse(fs.readFileSync(manifest.authorResultPath, "utf8"));
+      authorResult = JSON.parse(fs.readFileSync(manifest.authorResultPath, "utf8"));
       authorScenarios = new Map(
         (authorResult.scenarioPlan ?? []).map((scenario) => [scenario.id, scenario]),
       );
     } catch (error) {
       errors.push(`authorResultPath is invalid: ${error.message}`);
+    }
+  }
+  if (authorResult && !["completed", "partial"].includes(authorResult.status)) {
+    errors.push("author result status must be completed or partial");
+  }
+  if (authorResult && ["completed", "partial"].includes(authorResult.status)) {
+    const actualCounts = manifest.test?.counts;
+    if (buildStatus === "passed" && actualCounts) {
+      for (const [authorField, actualField] of [
+        ["totalTests", "total"],
+        ["passedTests", "passed"],
+        ["failedTests", "failed"],
+      ]) {
+        if (authorResult[authorField] !== actualCounts[actualField]) {
+          errors.push(
+            `author ${authorField} does not match verifier test.counts.${actualField}`,
+          );
+        }
+      }
+    }
+    if (authorResult.status === "completed" && executionFailed) {
+      errors.push("author completed claim does not match verifier execution");
+    }
+    if (authorResult.status === "partial" && !executionFailed) {
+      errors.push("author partial claim does not match verifier execution");
     }
   }
   if (allAuthorScenarios) {
@@ -361,7 +556,6 @@ if (requireQuality) {
   }
   if (lowValueMethods.length > 0) {
     if (quality?.status !== "fail") errors.push("low-value tests require quality fail");
-    if ((score?.total ?? 100) > 79) errors.push("low-value tests cap quality score at 79");
     if (!(quality?.issues ?? []).some((issue) => issue.category === "value")) {
       errors.push("low-value tests require a value quality issue");
     }
@@ -371,6 +565,7 @@ if (requireQuality) {
   if (!validDecisions.includes(decision?.status)) errors.push("coverageDecision.status is invalid");
   if (!Array.isArray(decision?.repairable)) errors.push("coverageDecision.repairable must be an array");
   if (!Array.isArray(decision?.uncoverable)) errors.push("coverageDecision.uncoverable must be an array");
+  else validateUncoverable(decision.uncoverable);
   if (typeof manifest.isFinal !== "boolean") errors.push("isFinal must be boolean");
 
   const repairableQuality = (quality?.issues ?? []).some((issue) => issue.repairable === true);
@@ -380,12 +575,11 @@ if (requireQuality) {
   if (decision?.status === "pass") {
     if (manifest.goal?.met !== true) errors.push("pass decision requires coverage goal");
     if (quality?.status !== "pass") errors.push("pass decision requires quality pass");
-    if ((score?.total ?? 0) < 90) errors.push("pass decision requires quality score >= 90");
+    if (hasRepairable) errors.push("pass cannot contain testable or repairable gaps");
   }
   if (decision?.status === "best_effort") {
     if (manifest.goal?.met === true) errors.push("best_effort requires an unmet coverage goal");
     if (quality?.status !== "pass") errors.push("best_effort requires quality pass");
-    if ((score?.total ?? 0) < 90) errors.push("best_effort requires quality score >= 90");
     if (lowValueMethods.length > 0) errors.push("best_effort cannot retain low-value tests");
     if (hasRepairable) errors.push("best_effort cannot contain repairable gaps");
     if ((decision?.uncoverable?.length ?? 0) === 0) {

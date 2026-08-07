@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
+// Lite workflow 專用 visible-context estimator。
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const orchestratorFiles = [
@@ -47,26 +50,172 @@ const fixedContractPaths = new Set(
   ].map((file) => path.resolve(root, file)),
 );
 
+const baselineVersion = {
+  id: "original-unit-matrix-2026-07",
+  reason: "與既有原版 10-run matrix 對齊",
+  workflow: {
+    repository: "kevintsengtw/dotnet-testing-agent-orchestration-codex-lab",
+    branch: "feature/validate-adjusted-testing-workflows",
+    commit: "5e886db9c22dac4514ceb4aab823ae22dbe7c8f0",
+  },
+  sharedSkills: {
+    repository: "kevintsengtw/dotnet-testing-agent-skills",
+    tag: "v2.4.1",
+    commit: "ff31b1aae9fbc66292996c1caf9ad570b608cba4",
+  },
+};
+const defaultBaselineRepos = {
+  workflow: path.resolve(root, "../dotnet-testing-agent-orchestration-codex-lab"),
+  sharedSkills: path.resolve(root, "../dotnet-testing-agent-skills"),
+};
+const comparisonScope = {
+  id: "initial-path-fixed-contracts-v1",
+  description: "入口 skill、每個必經 agent 定義，以及該 phase 無條件載入的 skills；同一 skill 跨 phase 重複計費，條件式 skills 排除",
+  lite: {
+    orchestrator: orchestratorFiles,
+    authorInitial: authorInitialFiles,
+    verifierInitial: verifierInitialFiles,
+  },
+  baseline: {
+    orchestrator: [
+      { source: "workflow", path: ".codex/skills/dotnet-testing-orchestrator-unit/SKILL.md" },
+    ],
+    analyzer: [
+      { source: "workflow", path: ".codex/agents/dotnet-testing-analyzer.toml" },
+    ],
+    writer: [
+      { source: "workflow", path: ".codex/agents/dotnet-testing-writer.toml" },
+      { source: "sharedSkills", path: "skills/dotnet-testing-unit-test-fundamentals/SKILL.md" },
+      { source: "sharedSkills", path: "skills/dotnet-testing-test-naming-conventions/SKILL.md" },
+      { source: "sharedSkills", path: "skills/dotnet-testing-awesome-assertions-guide/SKILL.md" },
+    ],
+    executor: [
+      { source: "workflow", path: ".codex/agents/dotnet-testing-executor.toml" },
+      { source: "workflow", path: ".codex/skills/dotnet-test/SKILL.md" },
+    ],
+    reviewer: [
+      { source: "workflow", path: ".codex/agents/dotnet-testing-reviewer.toml" },
+      { source: "sharedSkills", path: "skills/dotnet-testing-test-naming-conventions/SKILL.md" },
+      { source: "sharedSkills", path: "skills/dotnet-testing-awesome-assertions-guide/SKILL.md" },
+      { source: "sharedSkills", path: "skills/dotnet-testing-unit-test-fundamentals/SKILL.md" },
+    ],
+  },
+};
+
 function parseArgs(argv) {
   const result = {};
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--test-project") result.testProject = argv[++index];
     else if (argv[index] === "--target") result.target = argv[++index];
     else if (argv[index] === "--output") result.output = argv[++index];
+    else if (argv[index] === "--baseline-workflow-repo") {
+      result.baselineWorkflowRepo = argv[++index];
+    } else if (argv[index] === "--baseline-skills-repo") {
+      result.baselineSkillsRepo = argv[++index];
+    }
     else throw new Error(`未知參數: ${argv[index]}`);
   }
   return result;
 }
 
+function sha256(text) {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
+
 function measure(files) {
   const rows = files.map((file) => {
-    const characters = fs.readFileSync(path.join(root, file), "utf8").length;
-    return { file, characters, estimatedTokens: Math.round(characters / 3.6) };
+    const text = fs.readFileSync(path.join(root, file), "utf8");
+    return {
+      file,
+      sha256: sha256(text),
+      characters: text.length,
+      estimatedTokens: Math.round(text.length / 3.6),
+    };
   });
+  return total(rows);
+}
+
+function total(files) {
   return {
-    files: rows,
-    characters: rows.reduce((sum, row) => sum + row.characters, 0),
-    estimatedTokens: rows.reduce((sum, row) => sum + row.estimatedTokens, 0),
+    files,
+    characters: files.reduce((sum, row) => sum + row.characters, 0),
+    estimatedTokens: files.reduce((sum, row) => sum + row.estimatedTokens, 0),
+  };
+}
+
+function git(repo, args) {
+  if (!fs.existsSync(repo)) return { status: 1, stderr: "repository path is absent" };
+  return spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+}
+
+function measurePinnedPhase(items, repositories) {
+  const files = [];
+  const missingFiles = [];
+  for (const item of items) {
+    const source = baselineVersion[item.source];
+    const repositoryPath = repositories[item.source];
+    const blob = git(repositoryPath, ["show", `${source.commit}:${item.path}`]);
+    if (blob.status !== 0) {
+      missingFiles.push({
+        source: item.source,
+        repositoryPath,
+        commit: source.commit,
+        file: item.path,
+        reason: blob.stderr.trim() || "git blob unavailable",
+      });
+      continue;
+    }
+    files.push({
+      source: item.source,
+      file: item.path,
+      commit: source.commit,
+      sha256: sha256(blob.stdout),
+      characters: blob.stdout.length,
+      estimatedTokens: Math.round(blob.stdout.length / 3.6),
+    });
+  }
+  return missingFiles.length > 0
+    ? { status: "unavailable", missingFiles }
+    : { status: "measured", ...total(files) };
+}
+
+function measurePinnedBaseline(repositories) {
+  const phaseContracts = {};
+  const missingFiles = [];
+  for (const [phase, items] of Object.entries(comparisonScope.baseline)) {
+    const measured = measurePinnedPhase(items, repositories);
+    phaseContracts[phase] = measured;
+    missingFiles.push(...(measured.missingFiles ?? []));
+  }
+  if (missingFiles.length > 0) {
+    return {
+      status: "unavailable",
+      version: baselineVersion,
+      repositories,
+      phaseContracts,
+      missingFiles,
+      characters: null,
+      estimatedTokens: null,
+    };
+  }
+  return {
+    status: "measured",
+    version: baselineVersion,
+    repositories,
+    phaseContracts,
+    characters: Object.values(phaseContracts)
+      .reduce((sum, phase) => sum + phase.characters, 0),
+    estimatedTokens: Object.values(phaseContracts)
+      .reduce((sum, phase) => sum + phase.estimatedTokens, 0),
+  };
+}
+
+function workspaceVersion() {
+  const revision = git(root, ["rev-parse", "HEAD"]);
+  return {
+    repository: "kevintsengtw/dotnet-testing-agent-orchestration-codex-lite-lab",
+    commit: revision.status === 0 ? revision.stdout.trim() : null,
+    contentIdentity: "per-file-sha256",
   };
 }
 
@@ -328,19 +477,46 @@ const staticWorkflowEstimatedTokens =
   phaseContracts.orchestrator.estimatedTokens +
   phaseContracts.authorInitial.estimatedTokens +
   phaseContracts.verifierInitial.estimatedTokens;
+const liteComparisonPhaseContracts = Object.fromEntries(
+  Object.entries(comparisonScope.lite).map(([phase, files]) => [phase, measure(files)]),
+);
+const liteComparison = {
+  status: "measured",
+  version: workspaceVersion(),
+  phaseContracts: liteComparisonPhaseContracts,
+  characters: Object.values(liteComparisonPhaseContracts)
+    .reduce((sum, phase) => sum + phase.characters, 0),
+  estimatedTokens: Object.values(liteComparisonPhaseContracts)
+    .reduce((sum, phase) => sum + phase.estimatedTokens, 0),
+};
+const baselineRepositories = {
+  workflow: path.resolve(
+    root,
+    args.baselineWorkflowRepo ?? defaultBaselineRepos.workflow,
+  ),
+  sharedSkills: path.resolve(
+    root,
+    args.baselineSkillsRepo ?? defaultBaselineRepos.sharedSkills,
+  ),
+};
+const baselineComparison = measurePinnedBaseline(baselineRepositories);
 const result = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estimateKind: "visible-text-chars-divided-by-3.6",
-  baselineFixedContractEstimatedTokens: 39284,
   phaseContracts,
   staticWorkflowEstimatedTokens,
+  workflowDefinition: {
+    scope: comparisonScope,
+    lite: liteComparison,
+    baseline: baselineComparison,
+    reductionPercent: baselineComparison.status === "measured"
+      ? Math.round(
+        (1 - liteComparison.estimatedTokens / baselineComparison.estimatedTokens) * 10000,
+      ) / 100
+      : null,
+  },
   conditionalSkillEntryPoints: measure(conditionalEntryFiles),
 };
-result.staticWorkflowReductionPercent =
-  Math.round(
-    (1 - result.staticWorkflowEstimatedTokens / result.baselineFixedContractEstimatedTokens) *
-      10000,
-  ) / 100;
 if (args.testProject) {
   result.runtime = runtimeEstimate(args.testProject, args.output, args.target);
   if (args.target) result.target = args.target;
