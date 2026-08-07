@@ -31,7 +31,7 @@ AwesomeAssertions 或通用 `dotnet-testing-code-coverage-analysis`。
 
 ## Truth
 
-- Build/test：`run-unit-coverage.mjs` process exit與manifest。
+- Build/test：`lite-run-unit-coverage.mjs` process exit與manifest。
 - Coverage：target-scoped Cobertura line/branch。
 - User scenarios：author result mapping。
 - Quality：verifier issues；uncoverable gap 必須附可由 gate 驗證的公開 API 反證。

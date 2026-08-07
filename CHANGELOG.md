@@ -2,6 +2,45 @@
 
 所有重要變更都記錄於此文件，版本格式遵循 Semantic Versioning。
 
+## [v1.0.0] - 2026-08-08
+
+正式穩定版將 Lite runtime 隔離至專屬 script 命名空間，讓原版與 Lite workflow
+可以安裝在同一個 workspace，並以完整 Luna max 10-run matrix 驗證改名後的流程。
+
+### 不相容變更
+
+- Lite coverage runner 改名為 `.codex/scripts/lite-run-unit-coverage.mjs`。
+- Lite result validator 改名為 `.codex/scripts/lite-validate-unit-result.mjs`。
+- Lite helper 由 `.codex/scripts/lib/**` 移至 `.codex/scripts/lite-lib/**`。
+- 直接引用舊內部路徑的自訂整合必須改用新的 Lite 路徑；隨版本發布的 agent、skill
+  與 runtime 引用已同步更新。
+
+### 變更
+
+- 更新 Lite Verifier 與所有可追蹤引用，完整使用新的 script 命名空間。
+- 保留原版 workflow 的通用 script 路徑，避免兩套 workflow 安裝時互相覆寫。
+- 強化 public snapshot 白名單，只發布 Lite agent、Lite Orchestrator 與必要的 Lite
+  runtime；原版 agents、原版 Orchestrator、lab controller 與測試不會進入公開版。
+- README 與公開 README 補充共存安裝方式、命名空間邊界及重新驗證結果。
+
+### 驗證
+
+- Repository tests：120/120 通過。
+- GPT-5.6 Luna max Lite matrix：10/10 outer runs、12/12 target executions 完成。
+- Terminal decision：8 pass、4 best_effort；quality gate：12/12 pass；6/12 targets
+  使用一次 repair。
+- Aggregate raw input + output：15,834,891 tokens；workflow duration 合計
+  8,833,270 ms（約 2:27:13）。這是 outer 與 Lite agents 的 aggregate telemetry，
+  不是 Luna 單一模型的實際帳單。
+- 所有 run 都使用新的 Lite runtime 路徑，舊通用 Lite 路徑不存在；production source
+  mutation 為 0。
+
+### 發布邊界
+
+- Public repo 只接收白名單 consumer snapshot 與驗證摘要，不發布本次驗證的 raw
+  `.workflow`、controller、incident、run workspace 或其他 lab-only 資產。
+- Lab repo 不建立 tag；`v1.0.0` tag 與 GitHub Release 只建立在 public consumer repo。
+
 ## [v0.2.0] - 2026-08-07
 
 Lite Author 與 Lite Verifier 的預設模型更新為 GPT-5.6 Sol medium，並公開模型

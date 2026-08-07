@@ -92,7 +92,7 @@ node scripts/check-test-naming-conventions.mjs --strict <testFilePaths...>
    summary，不讀 coverage base：
 
 ```bash
-node .codex/scripts/run-unit-coverage.mjs \
+node .codex/scripts/lite-run-unit-coverage.mjs \
   --test-project <testProjectPath> \
   --target-source <targetSourcePath> \
   --target-class <targetClass> \
@@ -184,7 +184,7 @@ node scripts/create-coverage-summary.mjs --coverage-base <verificationOutputPath
 
 ```bash
 node scripts/merge-verifier-result.mjs --coverage-base <verificationOutputPath> --supplement <supplement> --output <verificationOutputPath>
-node .codex/scripts/validate-unit-result.mjs \
+node .codex/scripts/lite-validate-unit-result.mjs \
   --manifest <verificationOutputPath> \
   --require-quality
 ```

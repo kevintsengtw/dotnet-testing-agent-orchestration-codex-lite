@@ -4,9 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { parseCobertura } from "./lib/cobertura.mjs";
-import { parseTrxCounts } from "./lib/trx.mjs";
-import { parseBuildWarnings } from "./lib/build-output.mjs";
+import { parseCobertura } from "./lite-lib/cobertura.mjs";
+import { parseTrxCounts } from "./lite-lib/trx.mjs";
+import { parseBuildWarnings } from "./lite-lib/build-output.mjs";
 
 function parseArgs(argv) {
   const args = { lineThreshold: 100, branchThreshold: 100 };
@@ -29,7 +29,7 @@ function parseArgs(argv) {
 
 function usage() {
   return `Usage:
-  node .codex/scripts/run-unit-coverage.mjs \\
+  node .codex/scripts/lite-run-unit-coverage.mjs \\
     --test-project <tests.csproj> \\
     --target-source <source.cs> \\
     --target-class <ClassName> \\

@@ -24,9 +24,12 @@
 
 ## Coverage truth
 
-`.codex/scripts/run-unit-coverage.mjs` 是 build、test 與 coverage 的 deterministic
+`.codex/scripts/lite-run-unit-coverage.mjs` 是 build、test 與 coverage 的 deterministic
 truth。100% 是預設目標而非造假門檻；無法合理覆蓋時必須列出 lines、branches
 與原因。
+
+Lite 擁有的 `.codex/scripts` 入口必須使用 `lite-` 前綴，內部 helper 必須位於
+`.codex/scripts/lite-lib/`。不得新增或引用會與原版 workflow 共用路徑的通用名稱。
 
 ## Skill 邊界
 

@@ -8,7 +8,7 @@ description: Build-first 執行 xUnit、收集 Cobertura並產生 target-scoped 
 正式 workflow一律使用 repo script：
 
 ```bash
-node .codex/scripts/run-unit-coverage.mjs \
+node .codex/scripts/lite-run-unit-coverage.mjs \
   --test-project <tests.csproj> \
   --target-source <source.cs> \
   --target-class <ClassName> \

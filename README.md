@@ -53,6 +53,38 @@ scaffold。
 本 repo 不需要 clone 或安裝其他 testing-skill repository。Bogus 不在 lite
 workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
+本 workflow 可與原版 `dotnet-testing-agent-orchestration-codex` 安裝在同一個
+workspace，再依情境選用。Lite 擁有的 `.codex/scripts` 入口一律使用 `lite-`
+前綴，內部 helper 固定放在 `.codex/scripts/lite-lib/`，避免覆寫原版 runtime。
+安裝時必須合併 workspace 的 `.codex/config.toml`，不可用任一 repo 的完整設定檔
+覆寫另一份；README、CHANGELOG 與 samples 也不屬於疊加安裝資產。
+
+## v1.0.0 Lite script 命名空間驗證
+
+v1.0.0 將 Lite runtime 的入口統一為 `lite-` 前綴，helper 移至
+`.codex/scripts/lite-lib/`，讓 Lite 與原版 workflow 可以共存。這次只調整 runtime
+路徑與引用，沒有改變 workflow topology、repair 額度、coverage 規則或品質門檻。
+
+改名後以 GPT-5.6 Luna／max 的 Lite Author、Verifier 重新執行固定 10-run matrix；
+outer coordinator 固定為 GPT-5.6 Sol／medium：
+
+| 驗證項目 | 結果 |
+| --- | ---: |
+| Outer runs | 10/10 完成 |
+| Target executions | 12/12 完成 |
+| Terminal decision | 8 pass、4 best_effort |
+| Quality gate | 12/12 pass |
+| 使用 repair | 6/12 targets |
+| Aggregate raw input + output | 15,834,891 tokens |
+| Workflow duration 合計 | 8,833,270 ms（約 2:27:13） |
+| Production source mutation | 0 |
+
+所有 run 都實際使用新的 `lite-run-unit-coverage.mjs`、
+`lite-validate-unit-result.mjs` 與 `lite-lib/`，並確認舊的通用 Lite 路徑不存在。
+Token telemetry 混合 outer 與 Lite agents，不能視為 Luna 單一模型的實際用量或
+provider 帳單。Public release 保留這份驗證摘要；raw `.workflow`、controller、
+incident 與 run workspace 不在發布範圍內。
+
 ## Coverage 與品質
 
 正式 runner 先執行 `dotnet build`，成功後才用 `dotnet test --no-build` 收集
