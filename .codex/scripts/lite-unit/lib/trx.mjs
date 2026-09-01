@@ -6,6 +6,15 @@ function attributes(text) {
   return result;
 }
 
+function decodeXml(value) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
 export function parseTrxCounts(xml) {
   const match = xml.match(/<Counters\b([^>]*)\/?>/);
   if (!match) return null;
@@ -18,4 +27,15 @@ export function parseTrxCounts(xml) {
     failed: number("failed"),
     skipped: number("notExecuted"),
   };
+}
+
+export function parseTrxTestResults(xml) {
+  return [...xml.matchAll(/<UnitTestResult\b([^>]*)\/?\s*>/gu)].map((match) => {
+    const value = attributes(match[1]);
+    return {
+      testId: value.testId ?? null,
+      testName: value.testName ? decodeXml(value.testName) : null,
+      outcome: value.outcome ?? null,
+    };
+  });
 }

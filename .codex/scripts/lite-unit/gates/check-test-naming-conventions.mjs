@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { collectTestMethods, findPublicTestClass } from "./test-source-analysis.mjs";
+import { collectTestMethods, findPublicTestClass } from "../lib/test-source-analysis.mjs";
 
 function validateMethodName(name) {
   const hardViolations = [];
@@ -105,7 +105,7 @@ const strict = process.argv.includes("--strict");
 const fileArgs = process.argv.slice(2).filter((input) => input !== "--strict").map((input) => path.resolve(input));
 
 if (fileArgs.length === 0) {
-  console.error("Usage: node scripts/check-test-naming-conventions.mjs [--strict] <testFile1> [testFile2...]");
+  console.error("Usage: node .codex/scripts/lite-unit/gates/check-test-naming-conventions.mjs [--strict] <testFile1> [testFile2...]");
   process.exit(2);
 }
 

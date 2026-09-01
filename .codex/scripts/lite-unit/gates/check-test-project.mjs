@@ -121,7 +121,9 @@ function main() {
   }
 
   const references = fullPaths(test.Items?.ProjectReference);
-  if (!references.has(targetProject)) errors.push("target project is missing from ProjectReference");
+  if (!args.allowNoTestFiles && !references.has(targetProject)) {
+    errors.push("target project is missing from ProjectReference");
+  }
 
   const compileItems = fullPaths(test.Items?.Compile);
   for (const file of args.testFiles.map((value) => path.resolve(value))) {

@@ -40,18 +40,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
 
-    <!-- Lite Unit workflow 的預設 assertion 與 test-double 套件 -->
-    <PackageReference Include="AwesomeAssertions" Version="9.4.0" PrivateAssets="all" />
-    <PackageReference Include="NSubstitute" Version="5.3.0" />
   </ItemGroup>
-
-  <!-- 依 production seam 選用，不要無條件全部加入：
-       Microsoft.Extensions.TimeProvider.Testing
-       System.IO.Abstractions
-       System.IO.Abstractions.TestingHelpers
-       FluentValidation
-       AutoFixture / AutoFixture.Xunit2
-  -->
 
   <!-- 專案參考：測試專案參考要測試的主專案 -->
   <!-- 將下方路徑改為你的主專案路徑 -->

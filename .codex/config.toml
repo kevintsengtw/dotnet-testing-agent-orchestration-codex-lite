@@ -7,7 +7,6 @@ hooks = true
 
 [agents]
 enabled = true
-max_concurrent_threads_per_session = 3
 max_depth = 1
 max_threads = 6
 job_max_runtime_seconds = 1800

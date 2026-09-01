@@ -296,7 +296,7 @@ function main() {
       const estimate = JSON.parse(fs.readFileSync(estimatePath, "utf8"));
       manifest.tokenUsage.estimate = {
         kind: estimate.estimateKind,
-        workflowObservedEstimatedTokens: estimate.workflowObservedEstimatedTokens ?? null,
+        workflowEstimatedTokenUpperBound: estimate.workflowEstimatedTokenUpperBound ?? null,
         executedStaticWorkflowEstimatedTokens:
           estimate.executedStaticWorkflowEstimatedTokens ?? estimate.staticWorkflowEstimatedTokens,
         sourcePath: estimatePath,

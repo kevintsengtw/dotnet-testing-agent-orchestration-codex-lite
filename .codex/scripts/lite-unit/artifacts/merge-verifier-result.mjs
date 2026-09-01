@@ -20,16 +20,14 @@ function args(argv) {
 
 const allowed = new Set([
   "schemaVersion",
-  "isFinal",
-  "projectValidation",
   "quality",
   "qualityScore",
-  "authorResultPath",
   "testValue",
   "coverageDecision",
-  "repairEligibility",
-  "deliverables",
-  "repairManifestPath",
+  "blockerReview",
+  "notSuitableReview",
+  "decisionEvidence",
+  "phaseIncidents",
   "tokenEstimateInputs",
 ]);
 const input = args(process.argv.slice(2));
@@ -41,14 +39,27 @@ if (base.schemaVersion !== 1 || supplement.schemaVersion !== 1) {
 const unexpected = Object.keys(supplement).filter((key) => !allowed.has(key));
 if (unexpected.length > 0) throw new Error(`supplement contains deterministic fields: ${unexpected.join(",")}`);
 const inputs = supplement.tokenEstimateInputs;
-if (inputs?.artifactAccounting !== "deterministic-merge" ||
-    path.resolve(inputs.agentArtifactPath ?? "") !== path.resolve(input.supplement)) {
-  throw new Error("supplement requires deterministic-merge accounting and its own agentArtifactPath");
-}
+const supplementPhaseIncidents = Array.isArray(supplement.phaseIncidents)
+  ? supplement.phaseIncidents : [];
+const normalizedSupplement = {
+  ...supplement,
+  phaseIncidents: supplementPhaseIncidents,
+  tokenEstimateInputs: {
+    ...(inputs ?? {}),
+    artifactAccounting: "deterministic-merge",
+    agentArtifactPath: path.resolve(input.supplement),
+    readFiles: Array.isArray(inputs?.readFiles) ? inputs.readFiles : [],
+    writtenFiles: Array.isArray(inputs?.writtenFiles) ? inputs.writtenFiles : [],
+  },
+};
 const outputPath = path.resolve(input.output);
 const temporaryPath = `${outputPath}.merge.tmp`;
-fs.writeFileSync(temporaryPath, `${JSON.stringify({ ...base, ...supplement }, null, 2)}\n`, {
+fs.writeFileSync(temporaryPath, `${JSON.stringify({ ...base, ...normalizedSupplement }, null, 2)}\n`, {
   flag: "wx",
 });
 fs.renameSync(temporaryPath, outputPath);
-console.log(JSON.stringify({ status: "merged", outputPath }));
+console.log(JSON.stringify({
+  status: "merged",
+  outputPath,
+  agentIncidentCount: supplementPhaseIncidents.length,
+}));

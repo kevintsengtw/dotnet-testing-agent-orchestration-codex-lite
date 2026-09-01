@@ -21,10 +21,16 @@ export function collectTestMethods(sourceText) {
     if (!match) continue;
     const inline = match[2].trim();
     if (inline && register(inline, index + 1, match[1])) continue;
-    for (let lookahead = index + 1; lookahead < Math.min(index + 8, lines.length); lookahead += 1) {
+    for (let lookahead = index + 1; lookahead < lines.length; lookahead += 1) {
       const candidate = lines[lookahead].trim();
-      if (candidate.startsWith("[") && !candidate.startsWith("[InlineData")) continue;
+      if (!candidate || candidate.startsWith("//")) continue;
+      if (candidate.startsWith("[")) {
+        const trailing = candidate.slice(candidate.lastIndexOf("]") + 1).trim();
+        if (trailing && register(trailing, lookahead + 1, match[1])) break;
+        continue;
+      }
       if (register(candidate, lookahead + 1, match[1])) break;
+      break;
     }
   }
   return methods;

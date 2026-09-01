@@ -11,25 +11,17 @@
 - 測試方法使用中文三段式：`方法名_情境描述_預期結果`。
 - Markdown fenced code block必須標記語言。
 
-## 正式 topology
+## Workflow 行為的唯一來源
 
-`Lite Orchestrator → Lite Unit Author → Lite Unit Verifier`。第一次 verification
-若有合理可補的 coverage 或 quality gap，最多再執行一次
-`Lite Author repair → Lite Unit Verifier final`。
+Topology、repair 額度、coverage truth、terminal taxonomy、artifact 路徑與所有執行
+規則，一律只定義在下列可移植資產；本檔不重述：
 
-- 每個 target 一個 Author，不依 methods 或 scenarios split。
-- Verifier 可回報 test-only repair，不得修改 production source。
-- repair 只傳 compact gap manifest。
-- 所有正式 subagent 使用 `fork_turns: "none"`。
+- `.codex/skills/dotnet-testing-lite-orchestrator-unit/**`
+- `.codex/agents/dotnet-testing-lite-unit-{author,verifier}.toml`
+- `.codex/scripts/lite-unit/**`
 
-## Coverage truth
-
-`.codex/scripts/lite-run-unit-coverage.mjs` 是 build、test 與 coverage 的 deterministic
-truth。100% 是預設目標而非造假門檻；無法合理覆蓋時必須列出 lines、branches
-與原因。
-
-Lite 擁有的 `.codex/scripts` 入口必須使用 `lite-` 前綴，內部 helper 必須位於
-`.codex/scripts/lite-lib/`。不得新增或引用會與原版 workflow 共用路徑的通用名稱。
+Contributor 若要改變 workflow 行為，必須修改上述資產與對應 deterministic tests，
+不得只在本檔補規則。
 
 ## Skill 邊界
 
@@ -38,8 +30,7 @@ Lite 擁有的 `.codex/scripts` 入口必須使用 `lite-` 前綴，內部 helpe
 - 可移植 Unit skills 固定在 `.agents/skills/`。
 - 不得把 Lite Orchestrator 改成未標示 `lite` 的原版名稱。
 
-## 修改邊界
+## Repository 邊界
 
-- workflow 產生的測試只能修改指定 test project。
-- production source 不得由 Author 或 Verifier 修改。
+- 本 repo 只接受 xUnit Unit Test workflow 資產，不加入 TUnit、Integration 或 Aspire workflow。
 - `.orchestrator/`、`TestResults/`、`bin/`、`obj/` 不得簽入。

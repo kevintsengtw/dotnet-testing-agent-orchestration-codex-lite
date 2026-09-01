@@ -29,10 +29,11 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 ## 結果
 
 指定 test project 內的 csproj 與 `*Tests.cs` 是主要交付成果，流程結束後保留。
-`.orchestrator/` 內的 author／project validation／coverage／run JSON，以及
+每次執行使用獨立的 `.orchestrator/runs/<run-id>/<target>/`；其中的
+author／project validation／coverage／run JSON、`result.json` 與 `result.md`，以及
 `TestResults/`、`bin/`、`obj/` 是 run artifacts，可不進版控。run JSON 記錄
-整體耗時；token 只有 provider 實際值或明確標示的 visible-text estimate，
-兩者不得混稱。
+整體耗時；token 只有provider實際值或明確標示的申報檔案完整內容上限估算。局部
+讀取仍可能高估，不能與實際visible tokens或billing usage混稱。
 
 未達100%時，查看：
 
@@ -40,15 +41,19 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 - `uncoveredBranches`
 - verifier的 `repairable` / `uncoverable`
 
-每個 `uncoverable` 都必須附公開 API 反證。`When`／`Unless` 的 `&&`、`||`
-短路條件若可用不同公開輸入控制任一 operand，會由 gate 拒絕並要求列為
-`repairable`；只有確實被外層條件阻斷的內部分支才能保留為 `uncoverable`。
+每個 `uncoverable` 都必須附上從公開行為無法控制或觀察該缺口的證據；可由公開
+輸入重現且有重要價值的缺口列為 `repairable`。
 
 workflow 對 coverage 與 quality 共用一次 repair 額度，避免 token 無上限成長。
 
-Author result 的 `scenarioPlan` 會保留每個 scenario 的 ID、category、priority、名稱、預期行為、覆蓋規則、oracle、需求來源、implementation-detail 判斷與 test method。類別至少區分 happy、boundary、exception、branch、state、characterization；沒有適用情境時可不建立空泛測試，但需由分析明確排除。
+最終結果把 lifecycle、decision 與 stop reason 分開。`blocked` 表示整個 target
+確實缺少可用 production seam；環境寫入保護或 collector／CLI 事故分別以
+`environment_protection`、`tool_incident` 停止，不會冒充產品 blocker 或 test failure。
+環境保護停止時，由 deterministic runtime 保留受阻路徑、操作與錯誤證據。
 
-初次撰寫還必須附上 `completenessAudit`，逐項覆核 public behaviors、defaults、boundaries、branches、rule precedence、state/side effects 與 implementation details。Verifier 會先以 deterministic gate 驗證此 artifact；任何缺項或未解項目都會使品質判定失敗，即使 coverage 已達 100% 也不例外。
+Author result 的 `scenarioPlan` 保留可否證的預期行為、oracle、failure mode 與實際test method。
+Scenario數量、分類方式及品質措辭不是machine gate；repair只交付有限delta，不重送完整initial
+scenario mapping。
 
 Author 完成後會先以 MSBuild evaluated model 驗證測試 csproj、target
 `ProjectReference`、實際編譯的 test files、必要 xUnit/Coverlet 套件與 target
@@ -60,8 +65,8 @@ repository 或 infrastructure 才能成立的需求記在
 `excludedResponsibilities`。Oracle 必須能讓對應錯誤實作失敗，例如「唯一」
 要比較兩次結果，「不改變」要比較 before/after。
 
-Author-result gate 會直接解析 `testFilePaths` 內的 `[Fact]`／`[Theory]`，
-scenario mapping、宣告數量與實際 C# 方法必須一致。完整 exception message
+Author-result gate 會直接解析 `testFilePaths` 內的 `[Fact]`／`[Theory]`，確認initial scenario
+能追溯實際C#方法；build、test與project counts只讀runner evidence，不與Author自報數字比較。完整exception message
 只有公開契約明載時才能鎖定；複雜 mapping 應以獨立 Arrange 期望值逐欄驗證，
 不可只讓多個實際輸出互相比對。
 

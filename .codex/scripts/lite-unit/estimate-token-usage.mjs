@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Lite workflow 專用 visible-context estimator。
+// Lite workflow 固定契約與已申報檔案文字量的上限估算器。
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -13,24 +13,23 @@ const orchestratorFiles = [
 ];
 const authorInitialFiles = [
   ".codex/agents/dotnet-testing-lite-unit-author.toml",
-  ".agents/skills/dotnet-testing-unit-authoring/SKILL.md",
 ];
 const authorRepairFiles = [
   ".codex/agents/dotnet-testing-lite-unit-author.toml",
-  ".agents/skills/dotnet-testing-unit-authoring/SKILL.md",
 ];
 const verifierInitialFiles = [
   ".codex/agents/dotnet-testing-lite-unit-verifier.toml",
-  ".agents/skills/dotnet-test/SKILL.md",
 ];
 const verifierFinalFiles = [
   ".codex/agents/dotnet-testing-lite-unit-verifier.toml",
-  ".agents/skills/dotnet-test/SKILL.md",
 ];
 const conditionalEntryFiles = [
+  ".agents/skills/dotnet-test/SKILL.md",
+  ".agents/skills/dotnet-testing-unit-authoring/SKILL.md",
   ".agents/skills/dotnet-testing-unit-test-fundamentals/SKILL.md",
   ".agents/skills/dotnet-testing-test-naming-conventions/SKILL.md",
   ".agents/skills/dotnet-testing-awesome-assertions-guide/SKILL.md",
+  ".agents/skills/dotnet-testing-code-coverage-analysis/SKILL.md",
   ".agents/skills/dotnet-testing-xunit-project-setup/SKILL.md",
   ".agents/skills/dotnet-testing-nsubstitute-mocking/SKILL.md",
   ".agents/skills/dotnet-testing-datetime-testing-timeprovider/SKILL.md",
@@ -39,6 +38,7 @@ const conditionalEntryFiles = [
   ".agents/skills/dotnet-testing-unit-patterns/SKILL.md",
   ".agents/skills/dotnet-testing-unit-patterns/references/data-generation.md",
   ".agents/skills/dotnet-testing-unit-patterns/references/legacy-boundaries.md",
+  ".agents/skills/unit-test-scenarios/SKILL.md",
 ];
 const fixedContractPaths = new Set(
   [
@@ -69,8 +69,8 @@ const defaultBaselineRepos = {
   sharedSkills: path.resolve(root, "../dotnet-testing-agent-skills"),
 };
 const comparisonScope = {
-  id: "initial-path-fixed-contracts-v1",
-  description: "入口 skill、每個必經 agent 定義，以及該 phase 無條件載入的 skills；同一 skill 跨 phase 重複計費，條件式 skills 排除",
+  id: "initial-path-autonomous-skills-v2",
+  description: "入口 skill 與每個必經 agent 定義；技術 skills 由 agent 依具體疑問選讀，故只按實際 phase observations 計入 runtime",
   lite: {
     orchestrator: orchestratorFiles,
     authorInitial: authorInitialFiles,
@@ -107,6 +107,7 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--test-project") result.testProject = argv[++index];
     else if (argv[index] === "--target") result.target = argv[++index];
+    else if (argv[index] === "--run-root") result.runRoot = argv[++index];
     else if (argv[index] === "--output") result.output = argv[++index];
     else if (argv[index] === "--baseline-workflow-repo") {
       result.baselineWorkflowRepo = argv[++index];
@@ -238,18 +239,26 @@ function safeTargetName(value) {
   return value.replace(/[^\p{L}\p{N}_.-]/gu, "_");
 }
 
-function runtimeEstimate(testProject, excludedArtifact, target) {
+function runtimeEstimate(testProject, excludedArtifact, target, requestedRunRoot) {
   const testProjectPath = path.resolve(root, testProject);
   const testProjectDir = path.dirname(testProjectPath);
   const excludedPath = excludedArtifact ? path.resolve(root, excludedArtifact) : null;
-  const artifacts = walk(path.join(testProjectDir, ".orchestrator"), ".json")
+  const orchestratorRoot = path.join(testProjectDir, ".orchestrator");
+  const runtimeRoot = requestedRunRoot
+    ? path.resolve(root, requestedRunRoot)
+    : orchestratorRoot;
+  if (requestedRunRoot) {
+    const relativeRunRoot = path.relative(orchestratorRoot, runtimeRoot);
+    if (relativeRunRoot === ".." || relativeRunRoot.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relativeRunRoot)) {
+      throw new Error("--run-root 必須位於 test project 的 .orchestrator 內");
+    }
+  }
+  const artifacts = walk(runtimeRoot, ".json")
     .filter((artifact) =>
       !artifact.endsWith(".summary.json") && !artifact.endsWith(".supplement.json"))
     .filter((artifact) => path.resolve(artifact) !== excludedPath);
-  let phaseObservationFiles = walk(
-    path.join(testProjectDir, ".orchestrator", "observations"),
-    ".json",
-  );
+  let phaseObservationFiles = walk(path.join(runtimeRoot, "observations"), ".json");
   if (target) {
     phaseObservationFiles = phaseObservationFiles.filter((observationPath) => {
       try {
@@ -269,10 +278,11 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
   let verifierArtifactCount = 0;
 
   for (const artifact of artifacts) {
-    if (artifact.includes(`${path.sep}.orchestrator${path.sep}author${path.sep}`)) {
+    const relativeArtifact = path.relative(runtimeRoot, artifact);
+    if (relativeArtifact.startsWith(`author${path.sep}`)) {
       authorArtifactCount += 1;
     }
-    if (artifact.includes(`${path.sep}.orchestrator${path.sep}verification${path.sep}`)) {
+    if (relativeArtifact.startsWith(`verification${path.sep}`)) {
       verifierArtifactCount += 1;
     }
     const text = fs.readFileSync(artifact, "utf8");
@@ -296,6 +306,7 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
         observations.push({
           kind: "writtenArtifact",
           path: outputPath,
+          measurementBasis: "full-written-artifact",
           characters: outputText.length,
           estimatedTokens: Math.round(outputText.length / 3.6),
         });
@@ -316,6 +327,7 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
       observations.push({
         kind: "readFile",
         path: filePath,
+        measurementBasis: "declared-file-full-content-upper-bound",
         characters,
         estimatedTokens: Math.round(characters / 3.6),
       });
@@ -335,14 +347,16 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
       observations.push({
         kind: "writtenFile",
         path: filePath,
+        measurementBasis: "full-written-file",
         characters,
         estimatedTokens: Math.round(characters / 3.6),
       });
     }
   }
 
-  const orchestratorRoot = path.join(testProjectDir, ".orchestrator");
-  const canonicalRunManifestPath = target
+  const canonicalRunManifestPath = requestedRunRoot
+    ? path.join(runtimeRoot, "run.json")
+    : target
     ? path.join(orchestratorRoot, "runs", `${safeTargetName(target)}.json`)
     : null;
   const legacyRunManifestPath = path.join(orchestratorRoot, "run.json");
@@ -358,9 +372,15 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
     try {
       phaseRuns = runManifestPaths.flatMap((runManifestPath) => {
         const runManifest = JSON.parse(fs.readFileSync(runManifestPath, "utf8"));
-        if (target && runManifest.target !== target) return [];
-        return Array.isArray(runManifest.phaseRuns)
-          ? runManifest.phaseRuns.map((item) => ({ ...item, target: runManifest.target }))
+        const manifestTarget = runManifest.target ?? runManifest.targetClass;
+        if (target && manifestTarget !== target) return [];
+        const runs = runManifest.phaseRuns ?? runManifest.phases;
+        return Array.isArray(runs)
+          ? runs.map((item) => ({
+              ...item,
+              phase: item.phase ?? item.role,
+              target: manifestTarget,
+            }))
           : [];
       });
       phaseRunManifestAvailable = true;
@@ -403,6 +423,7 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
           kind: "writtenArtifact",
           phase: observation.phase,
           mode: observation.mode,
+          measurementBasis: "full-written-artifact",
           ...artifact,
         });
       }
@@ -414,6 +435,7 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
             kind: "readFile",
             phase: observation.phase,
             mode: observation.mode,
+            measurementBasis: "declared-file-full-content-upper-bound",
             ...item,
           });
         }
@@ -423,6 +445,7 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
           kind: "writtenFile",
           phase: observation.phase,
           mode: observation.mode,
+          measurementBasis: "full-written-file",
           ...item,
         });
       }
@@ -459,7 +482,7 @@ function runtimeEstimate(testProject, excludedArtifact, target) {
     fixedContractReadDuplicatesExcluded: fixedContractReadDuplicates,
     fixedContractReadDuplicateEstimatedTokens:
       fixedContractReadDuplicates.reduce((sum, item) => sum + item.estimatedTokens, 0),
-    observedEstimatedTokens: phaseObservationComplete === false
+    runtimeTextUpperBoundEstimatedTokens: phaseObservationComplete === false
       ? null
       : observations.reduce((sum, item) => sum + item.estimatedTokens, 0),
   };
@@ -502,7 +525,7 @@ const baselineRepositories = {
 const baselineComparison = measurePinnedBaseline(baselineRepositories);
 const result = {
   schemaVersion: 2,
-  estimateKind: "visible-text-chars-divided-by-3.6",
+  estimateKind: "fixed-contract-and-declared-file-upper-bound-chars-divided-by-3.6",
   phaseContracts,
   staticWorkflowEstimatedTokens,
   workflowDefinition: {
@@ -518,7 +541,7 @@ const result = {
   conditionalSkillEntryPoints: measure(conditionalEntryFiles),
 };
 if (args.testProject) {
-  result.runtime = runtimeEstimate(args.testProject, args.output, args.target);
+  result.runtime = runtimeEstimate(args.testProject, args.output, args.target, args.runRoot);
   if (args.target) result.target = args.target;
   const countPhase = (phase, mode) =>
     result.runtime.phaseRuns.filter(
@@ -545,8 +568,8 @@ if (args.testProject) {
     phaseContracts.authorRepair.estimatedTokens * result.phaseExecutions.authorRepair +
     phaseContracts.verifierInitial.estimatedTokens * result.phaseExecutions.verifierInitial +
     phaseContracts.verifierFinal.estimatedTokens * result.phaseExecutions.verifierFinal;
-  result.workflowObservedEstimatedTokens = result.runtime.status === "available"
-    ? result.executedStaticWorkflowEstimatedTokens + result.runtime.observedEstimatedTokens
+  result.workflowEstimatedTokenUpperBound = result.runtime.status === "available"
+    ? result.executedStaticWorkflowEstimatedTokens + result.runtime.runtimeTextUpperBoundEstimatedTokens
     : null;
 }
 

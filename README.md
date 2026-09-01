@@ -7,10 +7,10 @@
 
 ```text
 Lite Orchestrator
+  → deterministic driver（run identity、gates、terminal state）
   → Lite Unit Author（分析目標並撰寫測試）
   → Lite Unit Verifier（build、test、coverage、品質檢查）
-  → 有合理可補缺口時，最多一次 Author repair
-  → Lite Unit Verifier final
+  → 有合理可補缺口時，最多一次 Author repair → Lite Unit Verifier final
 ```
 
 ### Lite agent 預設模型
@@ -45,24 +45,43 @@ scaffold。
 
 - `.codex/agents/`：Lite Unit Author 與 Lite Unit Verifier。
 - `.codex/skills/dotnet-testing-lite-orchestrator-unit/`：唯一 workflow 入口。
-- `.codex/scripts/`：Lite token estimator、build-first runner、Cobertura parser 與結果驗證。
-- `scripts/`：Lite workflow 必要的 deterministic gates 與 artifact helpers。
+- `.codex/scripts/lite-unit/`：唯一 workflow driver、deterministic gates、artifact helpers、
+  token estimator、build-first runner、Cobertura parser 與結果驗證。
 - `.agents/skills/`：13 個 Unit testing skills 與必要 references／templates。
 - `samples/unit/practice/`：net8.0、net9.0、net10.0 空白練習矩陣。
 
 本 repo 不需要 clone 或安裝其他 testing-skill repository。Bogus 不在 lite
 workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
+13 個 Unit skills 都是可選技術來源，不是固定 routing 或必載清單。Agent 只有在
+具體技術疑問無法由 source、project、gates 與實測證據解決時，才選讀最少相關來源。
+
 本 workflow 可與原版 `dotnet-testing-agent-orchestration-codex` 安裝在同一個
 workspace，再依情境選用。Lite 擁有的 `.codex/scripts` 入口一律使用 `lite-`
-前綴，內部 helper 固定放在 `.codex/scripts/lite-lib/`，避免覆寫原版 runtime。
+專屬目錄，正式 runtime 固定放在 `.codex/scripts/lite-unit/`，避免覆寫原版 runtime。
 安裝時必須合併 workspace 的 `.codex/config.toml`，不可用任一 repo 的完整設定檔
 覆寫另一份；README、CHANGELOG 與 samples 也不屬於疊加安裝資產。
+
+## v1.1.0 deterministic workflow重整
+
+v1.1.0因應`dotnet-testing-agent-skills v2.4.2`，把模型責任收斂為測試語意工作，並將
+workflow state、machine truth、integrity、artifact、timing、token estimate與繁中final交由
+`.codex/scripts/lite-unit/`的deterministic driver維護。
+
+- Orchestrator只啟動driver、依action調度固定Author→Verifier拓樸，並逐字交付final。
+- Author只建立高價值xUnit Unit Tests、處理test-only問題與唯一一次有限repair。
+- Verifier對production與test delivery唯讀，獨立驗證build、test、target-scoped coverage及
+  重要可測缺口。
+- No-test、blocked、not-suitable與environment protection均有獨立machine state，不以測試數量、
+  scenario拆分、skill選擇或低嚴重度措辭差異判定失敗。
+
+Repository tests為125/125通過；public snapshot固定為179個檔案、2個Lite agents與13個Unit
+skills。Final candidate的影響導向live批次為3/3 `hard-pass`，且production mutation為0。
 
 ## v1.0.0 Lite script 命名空間驗證
 
 v1.0.0 將 Lite runtime 的入口統一為 `lite-` 前綴，helper 移至
-`.codex/scripts/lite-lib/`，讓 Lite 與原版 workflow 可以共存。這次只調整 runtime
+`.codex/scripts/lite-unit/`，讓 Lite 與原版 workflow 可以共存。這次只調整 runtime
 路徑與引用，沒有改變 workflow topology、repair 額度、coverage 規則或品質門檻。
 
 改名後以 GPT-5.6 Luna／max 的 Lite Author、Verifier 重新執行固定 10-run matrix；
@@ -79,8 +98,8 @@ outer coordinator 固定為 GPT-5.6 Sol／medium：
 | Workflow duration 合計 | 8,833,270 ms（約 2:27:13） |
 | Production source mutation | 0 |
 
-所有 run 都實際使用新的 `lite-run-unit-coverage.mjs`、
-`lite-validate-unit-result.mjs` 與 `lite-lib/`，並確認舊的通用 Lite 路徑不存在。
+這批歷史 run 使用當時的 Lite 專屬 runtime。現行 runtime 已集中在
+`.codex/scripts/lite-unit/`，不再散置於 `.codex/scripts/` 與根目錄 `scripts/`。
 Token telemetry 混合 outer 與 Lite agents，不能視為 Luna 單一模型的實際用量或
 provider 帳單。Public release 保留這份驗證摘要；raw `.workflow`、controller、
 incident 與 run workspace 不在發布範圍內。

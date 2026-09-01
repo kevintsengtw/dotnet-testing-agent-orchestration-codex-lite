@@ -8,22 +8,6 @@ description: |
 
 # xUnit 測試專案設定指南
 
-## Lite workflow 套件政策
-
-- 先讀既有 test csproj、`Directory.Packages.props` 與 lock file；已存在的套件不得升降版本。
-- 新專案先使用 `dotnet new xunit`，再只加入目標需要的套件。
-- 一般 Unit Test 預設能力：xUnit、`Microsoft.NET.Test.Sdk`、`xunit.runner.visualstudio`、`coverlet.collector`、AwesomeAssertions、NSubstitute。
-- 只有 production 已有相應 seam 時才加入：
-  - `Microsoft.Extensions.TimeProvider.Testing`
-  - `System.IO.Abstractions` 與 `System.IO.Abstractions.TestingHelpers`
-  - `FluentValidation`
-  - AutoFixture / AutoFixture.Xunit2
-- 不加入 Bogus。
-- 下方版本只作來源範例；新增套件時選擇與 target framework 及 repo 中央版本管理相容的 stable version。
-
-完整的套件用途、加入條件與 production/test project 歸屬，見
-[`references/package-selection.md`](references/package-selection.md)。
-
 ## 專案結構最佳實踐
 
 ### 建議的解決方案結構

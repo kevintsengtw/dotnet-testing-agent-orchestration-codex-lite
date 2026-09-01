@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { parseCobertura } from "./lite-lib/cobertura.mjs";
-import { parseTrxCounts } from "./lite-lib/trx.mjs";
-import { parseBuildWarnings } from "./lite-lib/build-output.mjs";
+import { parseCobertura } from "./lib/cobertura.mjs";
+import { parseTrxCounts } from "./lib/trx.mjs";
+import { parseBuildWarnings } from "./lib/build-output.mjs";
+import { classifyTestExecution } from "./lib/test-execution.mjs";
 
 function parseArgs(argv) {
   const args = { lineThreshold: 100, branchThreshold: 100 };
@@ -29,7 +31,7 @@ function parseArgs(argv) {
 
 function usage() {
   return `Usage:
-  node .codex/scripts/lite-run-unit-coverage.mjs \\
+  node .codex/scripts/lite-unit/run-coverage.mjs \\
     --test-project <tests.csproj> \\
     --target-source <source.cs> \\
     --target-class <ClassName> \\
@@ -94,7 +96,7 @@ function verifyProductionIntegrity(baselinePath) {
   if (!baselinePath) return { status: "not_checked" };
   const result = spawnSync(
     process.execPath,
-    ["scripts/check-production-integrity.mjs", "verify", "--manifest", baselinePath],
+    [".codex/scripts/lite-unit/gates/check-production-integrity.mjs", "verify", "--manifest", baselinePath],
     { cwd: process.cwd(), encoding: "utf8" },
   );
   let details;
@@ -131,9 +133,12 @@ function main() {
     repoRoot,
     args.output ?? path.join(testProjectDir, ".orchestrator", "verification", `${safeTarget}.coverage.json`),
   );
-  const rawDirectory = path.join(testProjectDir, ".orchestrator", "coverage", safeTarget);
-  fs.rmSync(rawDirectory, { recursive: true, force: true });
-  fs.mkdirSync(rawDirectory, { recursive: true });
+  if (fs.existsSync(outputPath)) throw new Error(`coverage manifest 已存在: ${outputPath}`);
+  const rawDirectory = path.join(
+    path.dirname(outputPath),
+    `${path.basename(outputPath, path.extname(outputPath))}.raw`,
+  );
+  if (fs.existsSync(rawDirectory)) throw new Error(`coverage evidence path 已存在: ${rawDirectory}`);
 
   const manifest = {
     schemaVersion: 1,
@@ -146,6 +151,7 @@ function main() {
     test: null,
     coverage: null,
     productionIntegrity: null,
+    runnerIncidents: [],
     status: "started",
   };
 
@@ -174,6 +180,7 @@ function main() {
   }
 
   const testStartedAtMs = Date.now();
+  const scratchDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-lite-coverage-"));
   const test = runDotnet(
     [
       "test",
@@ -183,24 +190,53 @@ function main() {
       "minimal",
       '--collect:XPlat Code Coverage',
       "--results-directory",
-      rawDirectory,
+      scratchDirectory,
       "--logger",
       "trx;LogFileName=test-results.trx",
     ],
     repoRoot,
   );
-  const trxPath = findFiles(rawDirectory, "test-results.trx")[0];
-  manifest.test = {
-    status: test.exitCode === 0 ? "passed" : "failed",
+  const scratchTrxPath = findFiles(scratchDirectory, "test-results.trx")[0];
+  const scratchCoveragePath = findFiles(scratchDirectory, "coverage.cobertura.xml")[0];
+  fs.cpSync(scratchDirectory, rawDirectory, { recursive: true, errorOnExist: true, force: false });
+  fs.rmSync(scratchDirectory, { recursive: true, force: true });
+  const trxPath = scratchTrxPath ? findFiles(rawDirectory, "test-results.trx")[0] : null;
+  const coveragePath = scratchCoveragePath
+    ? findFiles(rawDirectory, "coverage.cobertura.xml")[0]
+    : null;
+  const counts = trxPath
+    ? parseTrxCounts(fs.readFileSync(trxPath, "utf8"))
+    : testCounts(test.output);
+  let parsedCoverage = null;
+  let coverageError = null;
+  if (coveragePath) {
+    try {
+      parsedCoverage = parseCobertura(fs.readFileSync(coveragePath, "utf8"), {
+        targetSource,
+        targetClass: args.targetClass,
+      });
+    } catch (error) {
+      coverageError = error.message;
+    }
+  }
+  const execution = classifyTestExecution({
     exitCode: test.exitCode,
+    counts,
+    coverageAvailable: parsedCoverage !== null,
+  });
+  if (execution.incident) manifest.runnerIncidents.push(execution.incident);
+  manifest.test = {
+    status: execution.deliveryStatus === "passed"
+      ? "passed"
+      : execution.deliveryStatus === "failed" ? "failed" : "unavailable",
+    exitCode: test.exitCode,
+    processStatus: execution.status,
     durationMs: Date.now() - testStartedAtMs,
-    counts: trxPath
-      ? parseTrxCounts(fs.readFileSync(trxPath, "utf8"))
-      : testCounts(test.output),
+    counts,
     ...(trxPath ? { trxPath } : {}),
     ...(test.exitCode === 0 ? {} : { outputTail: tail(test.output) }),
   };
-  if (test.exitCode !== 0) {
+  if (execution.status === "test_failed") {
     manifest.productionIntegrity = verifyProductionIntegrity(args.productionBaseline);
     finish(
       manifest,
@@ -211,11 +247,31 @@ function main() {
     process.exitCode = 1;
     return;
   }
-
-  const coveragePath = findFiles(rawDirectory, "coverage.cobertura.xml")[0];
-  if (!coveragePath) {
+  if (execution.status === "tool_incident") {
     manifest.productionIntegrity = verifyProductionIntegrity(args.productionBaseline);
-    manifest.coverage = { error: "coverage.cobertura.xml not found" };
+    manifest.coverage = coveragePath
+      ? { reportPath: coveragePath, error: coverageError ?? "coverage evidence incomplete" }
+      : { error: "coverage.cobertura.xml not found" };
+    finish(
+      manifest,
+      manifest.productionIntegrity.status === "failed" ? "production_modified" : "tool_incident",
+      startedAtMs,
+    );
+    writeJson(outputPath, manifest);
+    console.log(JSON.stringify({
+      status: "tool_incident",
+      outputPath,
+      deliveryStatus: execution.deliveryStatus,
+      tests: manifest.test.counts,
+      coverageAvailable: parsedCoverage !== null,
+      incidents: manifest.runnerIncidents,
+    }));
+    process.exitCode = 2;
+    return;
+  }
+  if (!coveragePath || !parsedCoverage) {
+    manifest.productionIntegrity = verifyProductionIntegrity(args.productionBaseline);
+    manifest.coverage = { error: coverageError ?? "coverage.cobertura.xml not found" };
     finish(
       manifest,
       manifest.productionIntegrity.status === "failed" ? "production_modified" : "coverage_unavailable",
@@ -227,10 +283,7 @@ function main() {
   }
 
   try {
-    const coverage = parseCobertura(fs.readFileSync(coveragePath, "utf8"), {
-      targetSource,
-      targetClass: args.targetClass,
-    });
+    const coverage = parsedCoverage;
     manifest.coverage = { reportPath: coveragePath, ...coverage };
     manifest.goal = {
       met:
