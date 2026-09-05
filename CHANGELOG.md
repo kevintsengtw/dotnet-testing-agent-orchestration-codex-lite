@@ -2,6 +2,32 @@
 
 所有重要變更都記錄於此文件，版本格式遵循 Semantic Versioning。
 
+## [v1.1.1] - 2026-09-05
+
+### 修正
+
+- 修正部署 `dotnet-test` Skill 的 coverage runner 參照，使用
+  `.codex/scripts/lite-unit/run-coverage.mjs`，避免執行時發生 `MODULE_NOT_FOUND`。
+- 對齊 Skill 的 build 參數、完整專案測試、production baseline、output 與 repair 說明；
+  更新現行共存安裝與 coverage 操作指引。
+- 公開快照驗證加入部署 Skill 命令、agent 指示、runtime 相對 module 與子程序路徑
+  檢查；回歸測試涵蓋舊入口及遺失相依檔案，歷史 changelog／benchmark 文字保留。
+
+### 驗證
+
+- 本機必要 Node 測試 129/129 通過；回歸檢查可攔下修正前的 Skill 舊入口。
+- 隔離公開快照的 net10.0 Skill coverage smoke：22/22 通過，line／branch 皆 100%，
+  production integrity 通過。
+- net8.0 T01 live：28/28 通過，line 35/35、branch 14/14；Author→Verifier 完成、
+  未使用 repair，production／test integrity 與 final handoff 通過。
+- 本機驗證使用 Windows；未涵蓋 Linux／Node 20、net9.0 live 或下游 Extension。
+
+### 升級
+
+- 更新完整 Lite 部署資產；runtime 維持集中於 `.codex/scripts/lite-unit/**`，不加入舊入口 shim。
+- 下游需在新版 stable Release 發布後取得新的 exact commit archive 與 SHA-256；
+  不移動或覆寫 v1.1.0 tag。
+
 ## [v1.1.0] - 2026-09-01
 
 因應`dotnet-testing-agent-skills v2.4.2`完成Lite Unit Test workflow重整。模型只負責

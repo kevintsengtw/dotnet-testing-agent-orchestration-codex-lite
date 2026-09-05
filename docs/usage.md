@@ -26,6 +26,20 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 既有 target framework、中央套件版本與 project reference；不需要使用者先建立
 空白 csproj。
 
+## 直接執行 coverage runner
+
+在已部署 `.codex/` 與 `.agents/skills/` 的專案根目錄，依
+`dotnet-test` Skill 執行 `.codex/scripts/lite-unit/run-coverage.mjs`。
+五個 workflow 參數為 `--test-project`、`--target-source`、`--target-class`、
+`--output` 與 `--production-baseline`。Baseline 必須先由 production integrity gate
+的 `capture --target-source <source.cs> --output <baseline.json>` 建立；gate 位於
+`.codex/scripts/lite-unit/gates/check-production-integrity.mjs`。
+每次使用新的 output 路徑，runner 會保留 TRX、Cobertura 與 production integrity 結果。
+
+v1.1.1 修正了 v1.1.0 Skill 的入口參照。升級須更新完整 Lite 部署資產；
+固定 archive 的下游整合應等待新的 stable Release，記錄新 exact commit 與
+該 archive 的 SHA-256。既有 v1.1.0 tag 保持不變。
+
 ## 結果
 
 指定 test project 內的 csproj 與 `*Tests.cs` 是主要交付成果，流程結束後保留。

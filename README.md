@@ -57,10 +57,18 @@ workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 具體技術疑問無法由 source、project、gates 與實測證據解決時，才選讀最少相關來源。
 
 本 workflow 可與原版 `dotnet-testing-agent-orchestration-codex` 安裝在同一個
-workspace，再依情境選用。Lite 擁有的 `.codex/scripts` 入口一律使用 `lite-`
-專屬目錄，正式 runtime 固定放在 `.codex/scripts/lite-unit/`，避免覆寫原版 runtime。
+workspace，再依情境選用。Lite 的入口與內部 helper 全部集中於
+`.codex/scripts/lite-unit/`，避免覆寫原版 runtime。
 安裝時必須合併 workspace 的 `.codex/config.toml`，不可用任一 repo 的完整設定檔
 覆寫另一份；README、CHANGELOG 與 samples 也不屬於疊加安裝資產。
+
+## v1.1.1 runtime 路徑修正
+
+v1.1.1 修正 `dotnet-test` Skill 遺留的 coverage runner 路徑；正式入口為
+`.codex/scripts/lite-unit/run-coverage.mjs`。公開快照驗證會檢查部署 Skill 命令、
+agent 指示及 runtime 相依參照，防止發布缺少入口或相依檔案的版本。
+從 v1.1.0 升級時請更新完整部署資產；下游固定版本整合須在新版 stable Release
+發布後取得新的 exact commit archive 並重算 SHA-256，不沿用舊 tag 或舊 archive。
 
 ## v1.1.0 deterministic workflow重整
 
