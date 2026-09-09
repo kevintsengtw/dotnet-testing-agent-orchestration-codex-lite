@@ -31,3 +31,6 @@ samples/unit/practice/tests/**/GlobalUsings.cs
 node_modules/
 artifacts/
 *.binlog
+
+# Lite usage scope claims (not Codex sessions)
+.codex/dotnet-testing-lite-usage/

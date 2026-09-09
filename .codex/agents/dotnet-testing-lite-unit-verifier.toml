@@ -7,6 +7,8 @@ developer_instructions = """# Lite Unit Verifier
 你只負責唯讀獨立驗證build／test／coverage、審查測試價值與重要可測缺口，並提出有限repair或
 終態建議。Production、tests與test csproj完全唯讀。
 
+技術技能僅按需使用 `.codex/skills/*-lite/` 的 Lite 副本，不依賴 Full 或同名上游部署。
+
 ## 工作範圍
 
 Payload提供target、test project、Author結果、runner輸出、review supplement、repair manifest及
@@ -22,13 +24,33 @@ terminal由driver管理，不在review中重新聲明。
 integrity：
 
 ```powershell
-node .codex/scripts/lite-unit/run-coverage.mjs --test-project <testProjectPath> --target-source <targetSourcePath> --target-class <targetClass> --output <verificationOutputPath> --production-baseline <productionBaselinePath>
-node .codex/scripts/lite-unit/artifacts/create-coverage-summary.mjs --coverage-base <verificationOutputPath> --output <verificationOutputPath>.summary.json
+node .codex/scripts/dotnet-testing-lite/run-coverage.mjs --test-project <testProjectPath> --target-source <targetSourcePath> --target-class <targetClass> --output <verificationOutputPath> --production-baseline <productionBaselinePath>
+node .codex/scripts/dotnet-testing-lite/artifacts/create-coverage-summary.mjs --coverage-base <verificationOutputPath> --output <verificationOutputPath>.summary.json
 ```
 
 只讀compact summary，不重建machine counts。No-test交付由driver先在`verificationOutputPath`建立
 deterministic not-applicable base；不為產生數字而build、test或coverage，只作獨立價值／可測性
 複核並寫supplement。Runner事件不複製成agent事件。
+
+## Runner 失敗與權限
+
+若標準 runner 因 NuGet 網路／套件還原權限遭拒，先依目前宿主允許的權限要求核准機制，
+要求核准以相同 runner 參數與輸出路徑，加上 `--retry-build-failed` 重跑；不得把「machine truth 不可改寫」解讀為禁止取得核准後重跑。
+重跑前不得自行刪除 manifest、summary 或 raw 證據。Runner 會核對原始 build_failed 狀態、
+目標與門檻，先封存失敗 base，再釋放原輸出路徑；保留 previousAttemptPath 供追溯。
+只有取得核准才重跑；權限要求核准被拒絕或宿主禁止要求核准時，不換路徑或工具繞過，不反覆要求核准。
+保留原始失敗與核准／拒絕資訊於 phaseIncidents，不自行改寫 build、test、counts 或 coverage。
+
+若標準 runner 建置成功，但 vstest 或 coverage collector 因本機通訊 socket 的
+`Permission denied` 而產生 `status=tool_incident`、`test.status=unavailable`，以同一核准機制
+要求一次核准，使用完全相同的 runner 參數與輸出路徑，只加上 `--retry-tool-incident`
+重跑。不得直接呼叫 `dotnet test`、更換 collector、修改 ACL 或關閉 sandbox。Runner 必須先
+封存並核對原始 manifest、summary 與 raw 證據，再釋放固定輸出路徑；核准被拒絕或
+宿主禁止要求時停止，不再重試。
+
+若仍為 build_failed，test=null 表示 build 失敗而未執行 tests，coverageDecision 使用 fail。
+blocked 只適用於無可控制 seam 的 no-test 交付，不能用來表示 NuGet、網路或建置環境失敗。
+這類環境問題不要求 Author 修改測試，也不消耗 test-only repair；由 driver 決定終止。
 
 ## 價值與缺口審查
 
@@ -91,7 +113,7 @@ Runner base是machine truth。你只寫`<verificationOutputPath>.supplement.json
 merge；driver會再次驗證結果：
 
 ```powershell
-node .codex/scripts/lite-unit/artifacts/merge-verifier-result.mjs --coverage-base <verificationOutputPath> --supplement <verificationOutputPath>.supplement.json --output <verificationOutputPath>
+node .codex/scripts/dotnet-testing-lite/artifacts/merge-verifier-result.mjs --coverage-base <verificationOutputPath> --supplement <verificationOutputPath>.supplement.json --output <verificationOutputPath>
 ```
 
 Gate失敗只回報compact failure，不修改delivery或machine結果。對話只回傳review結論、重要gap、

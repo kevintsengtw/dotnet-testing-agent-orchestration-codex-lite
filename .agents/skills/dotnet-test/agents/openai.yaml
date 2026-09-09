@@ -1,4 +1,0 @@
-interface:
-  display_name: ".NET Test Runner"
-  short_description: "Build-first 測試與 target coverage manifest"
-  default_prompt: "Use $dotnet-test to build, test, and collect target-scoped coverage."

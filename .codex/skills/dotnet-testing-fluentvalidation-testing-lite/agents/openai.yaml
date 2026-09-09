@@ -1,0 +1,4 @@
+interface:
+  display_name: "FluentValidation Testing"
+  short_description: "使用 FluentValidation TestHelper 驗證同步與非同步規則"
+  default_prompt: "Use $dotnet-testing-fluentvalidation-testing-lite to test FluentValidation validators and boundaries."

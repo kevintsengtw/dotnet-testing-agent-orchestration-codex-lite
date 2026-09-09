@@ -1,4 +1,0 @@
-interface:
-  display_name: "File System Abstractions Testing"
-  short_description: "以 System.IO.Abstractions 測試檔案操作"
-  default_prompt: "Use $dotnet-testing-filesystem-testing-abstractions to test file operations without real disk I/O."

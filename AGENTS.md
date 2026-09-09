@@ -18,7 +18,7 @@ Topology、repair 額度、coverage truth、terminal taxonomy、artifact 路徑�
 
 - `.codex/skills/dotnet-testing-lite-orchestrator-unit/**`
 - `.codex/agents/dotnet-testing-lite-unit-{author,verifier}.toml`
-- `.codex/scripts/lite-unit/**`
+- `.codex/scripts/dotnet-testing-lite/**`
 
 Contributor 若要改變 workflow 行為，必須修改上述資產與對應 deterministic tests，
 不得只在本檔補規則。
@@ -27,7 +27,7 @@ Contributor 若要改變 workflow 行為，必須修改上述資產與對應 det
 
 - Codex Lite Orchestrator 固定在
   `.codex/skills/dotnet-testing-lite-orchestrator-unit/`。
-- 可移植 Unit skills 固定在 `.agents/skills/`。
+- 可移植 Unit skills 使用 `.codex/skills/*-lite/` 獨立名稱；不依賴 Full 資產。
 - 不得把 Lite Orchestrator 改成未標示 `lite` 的原版名稱。
 
 ## Repository 邊界

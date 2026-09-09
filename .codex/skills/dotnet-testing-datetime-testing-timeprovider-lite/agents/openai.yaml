@@ -1,0 +1,4 @@
+interface:
+  display_name: "TimeProvider Testing"
+  short_description: "以 TimeProvider 與 FakeTimeProvider 測試時間"
+  default_prompt: "Use $dotnet-testing-datetime-testing-timeprovider-lite to test time-dependent behavior deterministically."

@@ -25,7 +25,7 @@ build、test、coverage或重建workflow結果。
 - 每個正式agent都使用`fork_turns: "none"`，不繼承Main對話或驗收資料。
 - Author不得修改production；Verifier對production與test delivery唯讀。
 - Driver是phase ordering、repair eligibility、integrity、test／coverage truth、terminal decision、
-  timing、token estimate、artifact validation與final projection的唯一狀態真相。
+  timing、artifact validation與final projection的唯一狀態真相。
 - Agent事件與品質文字是語意觀察；只要基本結構可讀，不以固定欄位措辭或自然JSON shape
   阻斷topology。Hard gate只接受deterministic機制能獨立驗證的邊界。
 - Skills只是agents按需使用的技術來源，不是固定routing、必載清單或採用自述gate。
@@ -35,13 +35,13 @@ build、test、coverage或重建workflow結果。
 Main只使用以下兩個公開介面：
 
 ```powershell
-node .codex/scripts/lite-unit/workflow.mjs start `
+node .codex/scripts/dotnet-testing-lite/workflow.mjs start `
   --target-source <targetSourcePath> `
   --target-class <targetClass> `
   --test-project <testProjectPath> `
   [--scenario <userScenario> ...]
 
-node .codex/scripts/lite-unit/workflow.mjs advance `
+node .codex/scripts/dotnet-testing-lite/workflow.mjs advance `
   --manifest <manifestPath>
 ```
 
@@ -63,6 +63,12 @@ phase artifacts與terminal result。Main不直接呼叫leaf scripts，也不預�
 4. `dispatch_verifier_final`：只對原Verifier送出follow-up。
 5. `terminal`：停止action loop並交付driver結果。
 
+每個dispatch action提供`payloadPath`，內容是driver已保存的完整payload。Main以raw text讀取
+該檔，將讀取結果直接作為spawn／follow-up的message；不得從畫面重新抄寫payload、逐欄建立
+物件、縮短或重組任何path。Code-mode應把讀取工具回傳的完整文字直接傳給派遣工具，不經
+模型重新產生JSON。若讀取失敗或輸出遭截斷，停止派遣並回報錯誤，不自行補齊路徑。
+`payloadPath`只供Main讀取；Author／Verifier收到的是完整內容，不是要求它們自行找檔的提示。
+
 Main不解讀agent結果來決定下一phase；是否repair、是否terminal及多target同project的串行順序
 都只依driver action。不同test project即使可並行，也不得混用run、agents、artifacts或額度。
 
@@ -79,5 +85,9 @@ machine result存在；`resultMarkdownPath`以raw text讀取並直接作為final
 code-mode使用`text(markdownRead.output)`。除傳輸可能移除單一terminal newline外，不轉換、
 摘要或重建內容。
 
-繁中五區final、timing與estimated token usage由driver renderer產生；完整machine truth保留在
+繁中四區final與timing由driver renderer產生；完整machine truth保留在
 `result.json`。Main只負責忠實交付，不要求agents撰寫固定句子。
+
+Driver 的 machine result 不提供 token 估算或實際用量數字。Main 不得透過提示詞要求模型
+補報數值，也不得依文字長度自行估算。支援的 Codex runtime 會在 driver gate 與測試判定之外
+自動觀測用量；若 terminal Markdown 已包含用量網頁網址，Main 仍依上述規則逐字交付。

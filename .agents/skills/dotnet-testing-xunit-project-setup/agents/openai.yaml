@@ -1,4 +1,0 @@
-interface:
-  display_name: "xUnit Project Setup"
-  short_description: "建立 xUnit 測試專案並選擇必要的 NuGet 測試套件"
-  default_prompt: "Use $dotnet-testing-xunit-project-setup to create or repair an xUnit test project."

@@ -2,6 +2,66 @@
 
 所有重要變更都記錄於此文件，版本格式遵循 Semantic Versioning。
 
+## [Unreleased]
+
+## [v1.1.2] - 2026-09-09
+
+### 新增
+
+- Lite 獨立部署工具與雜湊安裝清單；13 個技術技能改用 `.codex/skills/*-lite/`，保留原始鏡像。
+- PR 非模型檢查加入 Windows、macOS、Linux 矩陣與隔離 coverage smoke；最新 CLI／Extension 實際驗收已通過。
+
+- Codex CLI 與 VS Code Extension 以一般提示詞啟動 Lite workflow 時，自動繫結目前主代理回合，
+  由背景 observer 收集主代理及其子代理的 runtime 用量，不需要專用啟動腳本、手動收集或 `/exit`。
+- 最終報告附上可複製的本機用量網頁網址；網頁顯示各代理與 workflow 合計，並依 runtime
+  `turn_context` 分組呈現模型、推理強度及服務模式。
+- 網頁提供選用的 Standard credit 前提試算；服務模式缺值時保持未知，且不將觀測值宣稱為帳單。
+- 新增跨平台 Node.js cleanup CLI；預設只預覽，支援指定 run、依保存天數、保留最近 N 次及
+  清除全部已完成 run，並拒絕刪除 active、未 terminal 或用量 observer 尚未收尾的資料。
+
+### 修正
+
+- 新增 `--retry-build-failed` 受控重跑：核對前次失敗狀態與相同目標，封存原始失敗後才釋放輸出路徑，成功結果仍禁止覆寫。
+- 專案標準 bin／obj 寫入受阻可回報環境停止，不放寬 production 原始碼修改範圍。
+- 用量啟動失敗且尚無 binding 時，正式報告明示沒有可用統計，並提供已建立的診斷網頁。
+
+- 修正 build_failed／test=null 與 Verifier 決策的契約銜接，確定建置失敗回報 fail 與建置停止原因；補上宿主允許時核准後重跑的指示，不放寬成功判定。
+
+- 用量防重複索引改為工作區內資料，不再寫入使用者家目錄；run 清理同步預覽及移除本次成功刪除 run 的對應索引，另保留孤立索引清理命令。
+- Author 指示明確要求 implemented 使用者情境提供對應 scenarioPlan 的 testMethod，補上可由 gate 驗證的範例。
+- Lab 的 Windows 驗收工作區集中於 C:/Temp；測試暫存由管理入口收尾清除。此限制不要求使用者把專案安裝在 C:/Temp。
+
+- Runtime 遷移至 `.codex/scripts/dotnet-testing-lite/`，部署參照與升級清理使用 Lite 自有範圍。
+- Observer 增加生命週期鎖、收尾標記、啟動失敗診斷與同回合重複繫結防護。
+- Cleanup 核對專案身分、完成時間、符號連結與並行狀態；增加只需 Node.js 的中斷復原命令。
+
+- Lite 結果驗證器遇到 `test: null` 時回報契約錯誤，不再因讀取 counts 拋出 TypeError；
+  不因此將缺少的測試結果視為通過。
+
+### 移除
+
+- Lite workflow 停止產生與顯示 token 用量估算，移除 Lite 估算器及結算呼叫。
+- 結果改為四區；result schemaVersion 升為 3、reportContractVersion 升為 2，
+  移除 estimatedTokenUsage、telemetry warnings 與 tokenEstimatePath。
+- Observation schemaVersion 升為 2，保留讀寫檔案與技術來源紀錄，移除 token 估算數字。
+  既有 tokenEstimateInputs 僅保留作為檔案路徑相容欄位。
+- 歷史 benchmark 與原版資產保留，不把舊估算值改稱為 runtime 實際用量。
+
+### 驗證
+
+- 最新 Windows Repository Node tests：171/171 通過。
+- 隔離公開快照 net10.0 coverage smoke：22/22，line／branch 100%。
+- CLI：34/34 測試通過，line 39/39、branch 22/22；用量正常收尾，共 50 requests、1,769,022 tokens（含快取）。
+- VS Code Extension：28/28 測試通過，line 39/39、branch 22/22；用量正常收尾，共 56 requests、2,096,564 tokens（含快取）。
+- 兩介面均驗證 NuGet 權限失敗後受控重跑成功，前次失敗證據保留；run／索引預覽及套用清理通過。
+- Runtime 提交 `82f3dd3` 的 Windows／macOS／Linux [CI 34243167685](https://github.com/kevintsengtw/dotnet-testing-agent-orchestration-codex-lite-lab/actions/runs/34243167685) 全部通過。
+
+### 資料保存與升級
+
+- 用量網頁、測試證據與工作區索引預設留存；下次啟動不自動清除，使用者以預覽／`--apply` 明確清理。
+- 清除單位為整個 run 與其索引；測試原始碼、csproj、bin／obj 及 Codex sessions／SQLite 保留。
+- 部署與清除工具只需 Node.js；Python／SQLite 屬用量收集相依。安裝、更新與移除命令見 [使用說明](docs/usage.md)。
+
 ## [v1.1.1] - 2026-09-05
 
 ### 修正

@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Coverage Analysis"
+  short_description: "分析 line、branch 與可補 coverage gaps"
+  default_prompt: "Use $dotnet-testing-code-coverage-analysis-lite to analyze target coverage and identify meaningful gaps."

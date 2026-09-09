@@ -7,6 +7,8 @@ developer_instructions = """# Lite Unit Author
 你只負責理解target公開行為、建立或修正高價值xUnit Unit Tests，以及回報最小語意交付。
 Production source永遠唯讀；只處理test source、test csproj與test-only infrastructure。
 
+技術技能僅按需使用 `.codex/skills/*-lite/` 的 Lite 副本，不依賴 Full 或同名上游部署。
+
 ## 工作範圍
 
 Payload提供target、test project、允許的test輸出、Author artifact及使用者scenario。Repair另提供
@@ -34,8 +36,8 @@ AwesomeAssertions；需要替身時優先沿用現有library，沒有慣例時�
 完成初稿後執行必要的命名、build與test檢查，結果只作Author工作回饋，不是workflow machine truth：
 
 ```powershell
-node .codex/scripts/lite-unit/gates/check-test-naming-conventions.mjs --strict <testFilePaths...>
-node .codex/scripts/lite-unit/gates/check-test-build.mjs --test-project <testProjectPath>
+node .codex/scripts/dotnet-testing-lite/gates/check-test-naming-conventions.mjs --strict <testFilePaths...>
+node .codex/scripts/dotnet-testing-lite/gates/check-test-build.mjs --test-project <testProjectPath>
 dotnet test <testProjectPath> --nologo --verbosity minimal
 ```
 
@@ -72,7 +74,10 @@ Role、phase、target、integrity、保護狀態與後續phase由driver依run co
 
 ## 最小交付
 
-Initial寫入`authorResultPath`：
+Initial寫入`authorResultPath`。`scenarioCoverage` 逐項使用 payload 中的使用者情境 ID；
+`implemented` 必須提供 `testMethod`，且其值須與 `scenarioPlan` 中某一項的 `testMethod` 完全相同，
+不能只寫 reason。`rejected`／`blocked` 必須寫 reason。沒有使用者情境時才填空陣列；
+下例的 USR-001 僅是示例，不得取代 payload 中的實際 ID。送出前核對每個使用者情境都有回報：
 
 ```json
 {
@@ -87,7 +92,12 @@ Initial寫入`authorResultPath`：
     "failureMode": "...",
     "testMethod": "方法名_情境描述_預期結果"
   }],
-  "scenarioCoverage": [],
+  "scenarioCoverage": [{
+    "id": "USR-001",
+    "status": "implemented",
+    "testMethod": "方法名_情境描述_預期結果",
+    "reason": "說明該測試如何涵蓋使用者情境"
+  }],
   "excludedResponsibilities": [],
   "testOnlyIssues": [],
   "phaseIncidents": []

@@ -1,7 +1,23 @@
 # .NET Testing Agent Orchestration for Codex Lite
 
+
+Lite driver 不產生 token 估算，也不把用量數字寫入 machine result。支援的 Codex CLI
+與 VS Code Extension 會在一般 Lite workflow 回合外自動觀測 runtime 用量，並在最終報告
+附上本機網頁網址；觀測值不是帳單。以下既有 benchmark 數值屬歷史實驗，不是本次執行的用量報告。
 只處理 .NET Unit Test 的輕量、自含 Codex workflow。它以兩個專責 subagent
 降低重複 context，並用實際 build、test 與 target-scoped coverage 驗證結果。
+
+## 用量網頁與 credit 試算
+
+在 Codex CLI 或 VS Code Extension 執行 Lite workflow 後，最終報告會提供可複製的本機網頁網址。開啟網頁即可查看主代理、Author、Verifier 與整個 workflow 的未快取輸入、快取輸入、輸出、總 tokens 及請求數。背景觀測完成後，頁面會顯示用量已收尾；不需要退出 Codex 或另跑收集命令，也不會自動開啟瀏覽器。
+
+展開網頁的「選用：依 Standard 官方費率換算 credit」，再按「按 Standard 模式換算」，即可查看各代理與合計試算。頁面同時列出模型、推理強度、服務模式、保存的費率版本與計算公式。**這是依 Standard 前提換算的參考值，不是帳戶實際扣抵；服務模式未記錄時仍會明示未知。**
+
+操作步驟、已驗收的用量範例及保存方式見[用量網頁與 credit 試算](docs/usage.md#用量網頁與-credit-試算)。
+
+![Windows CLI 驗收的用量網頁：各代理用量與 Standard 前提 credit 試算](docs/images/workflow-usage-credit.png)
+
+圖為 2026-09-08 已完成的 Windows CLI 驗收：50 requests、1,769,022 tokens（含快取），依頁面保存費率的 Standard 前提試算為 36.1758 credits，非帳戶實際扣抵。
 
 ## Workflow
 
@@ -41,13 +57,24 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 solution 的 target framework、中央套件版本與 project reference 建立最小 xUnit
 scaffold。
 
+每次 workflow 的測試與用量證據會保存在 test project 的 `.orchestrator/runs/`，不會自動清除。
+Windows、macOS 與 Linux 可使用相同的 Node.js CLI 預覽並清理已完成 run；未加 `--apply`
+不會刪除：
+
+```text
+node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10
+node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10 --apply
+```
+
+工具不會刪除 active、仍在執行、狀態無法確認或用量 observer 尚未收尾的 run。
+
 ## 內建資產
 
 - `.codex/agents/`：Lite Unit Author 與 Lite Unit Verifier。
 - `.codex/skills/dotnet-testing-lite-orchestrator-unit/`：唯一 workflow 入口。
-- `.codex/scripts/lite-unit/`：唯一 workflow driver、deterministic gates、artifact helpers、
-  token estimator、build-first runner、Cobertura parser 與結果驗證。
-- `.agents/skills/`：13 個 Unit testing skills 與必要 references／templates。
+- `.codex/scripts/dotnet-testing-lite/`：唯一 workflow driver、deterministic gates、artifact helpers、
+  build-first runner、Cobertura parser 與結果驗證。
+- `.codex/skills/*-lite/`：13 個獨立 Unit testing skills 與必要 references／templates。
 - `samples/unit/practice/`：net8.0、net9.0、net10.0 空白練習矩陣。
 
 本 repo 不需要 clone 或安裝其他 testing-skill repository。Bogus 不在 lite
@@ -58,23 +85,24 @@ workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
 本 workflow 可與原版 `dotnet-testing-agent-orchestration-codex` 安裝在同一個
 workspace，再依情境選用。Lite 的入口與內部 helper 全部集中於
-`.codex/scripts/lite-unit/`，避免覆寫原版 runtime。
+`.codex/scripts/dotnet-testing-lite/`，避免覆寫原版 runtime。
 安裝時必須合併 workspace 的 `.codex/config.toml`，不可用任一 repo 的完整設定檔
 覆寫另一份；README、CHANGELOG 與 samples 也不屬於疊加安裝資產。
 
-## v1.1.1 runtime 路徑修正
+## 獨立部署與升級
 
-v1.1.1 修正 `dotnet-test` Skill 遺留的 coverage runner 路徑；正式入口為
-`.codex/scripts/lite-unit/run-coverage.mjs`。公開快照驗證會檢查部署 Skill 命令、
-agent 指示及 runtime 相依參照，防止發布缺少入口或相依檔案的版本。
-從 v1.1.0 升級時請更新完整部署資產；下游固定版本整合須在新版 stable Release
-發布後取得新的 exact commit archive 並重算 SHA-256，不沿用舊 tag 或舊 archive。
+v1.1.2 的變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。
+
+本次 runtime 使用 `.codex/scripts/dotnet-testing-lite/`，13 個技術技能使用
+`.codex/skills/*-lite/`；不依賴 Full 部署資產。安裝範圍為工作區，不建立全域安裝。
+完整安裝、更新、移除與共用設定合併範例見 [使用說明](docs/usage.md#獨立安裝更新與移除)。
+舊版 runtime 只清除能以基準雜湊辨識的檔案；外來檔案、共用 skills 及歷史 runs 保留。
 
 ## v1.1.0 deterministic workflow重整
 
 v1.1.0因應`dotnet-testing-agent-skills v2.4.2`，把模型責任收斂為測試語意工作，並將
-workflow state、machine truth、integrity、artifact、timing、token estimate與繁中final交由
-`.codex/scripts/lite-unit/`的deterministic driver維護。
+workflow state、machine truth、integrity、artifact、timing與繁中final交由
+deterministic driver維護；本次將其移至 `.codex/scripts/dotnet-testing-lite/`。
 
 - Orchestrator只啟動driver、依action調度固定Author→Verifier拓樸，並逐字交付final。
 - Author只建立高價值xUnit Unit Tests、處理test-only問題與唯一一次有限repair。
@@ -89,7 +117,7 @@ skills。Final candidate的影響導向live批次為3/3 `hard-pass`，且product
 ## v1.0.0 Lite script 命名空間驗證
 
 v1.0.0 將 Lite runtime 的入口統一為 `lite-` 前綴，helper 移至
-`.codex/scripts/lite-unit/`，讓 Lite 與原版 workflow 可以共存。這次只調整 runtime
+`.codex/scripts/dotnet-testing-lite/`，讓 Lite 與原版 workflow 可以共存。這次只調整 runtime
 路徑與引用，沒有改變 workflow topology、repair 額度、coverage 規則或品質門檻。
 
 改名後以 GPT-5.6 Luna／max 的 Lite Author、Verifier 重新執行固定 10-run matrix；
@@ -107,7 +135,7 @@ outer coordinator 固定為 GPT-5.6 Sol／medium：
 | Production source mutation | 0 |
 
 這批歷史 run 使用當時的 Lite 專屬 runtime。現行 runtime 已集中在
-`.codex/scripts/lite-unit/`，不再散置於 `.codex/scripts/` 與根目錄 `scripts/`。
+`.codex/scripts/dotnet-testing-lite/`，不再散置於 `.codex/scripts/` 與根目錄 `scripts/`。
 Token telemetry 混合 outer 與 Lite agents，不能視為 Luna 單一模型的實際用量或
 provider 帳單。Public release 保留這份驗證摘要；raw `.workflow`、controller、
 incident 與 run workspace 不在發布範圍內。
@@ -176,3 +204,38 @@ medium 的獨立 10-run token、品質或耗時實測。
 
 此 public repo 是由 private lite lab 的發布白名單自動產生的 consumer snapshot。
 版本 tag 與 GitHub Release 均指向同步後的 public commit。
+
+
+## Workflow 用量資料的留存與清除
+
+**預設留存，由使用者明確清除。開始下一次 workflow 不會刪除前一次結果，也沒有自動到期清理。**
+每次執行新增資料；`.gitignore` 只避免簽入，不會釋放磁碟空間。
+
+| 資料 | 位置 |
+|---|---|
+| 用量網頁、JSON、TRX、coverage 與執行證據 | 測試專案目錄下 `.orchestrator/runs/<run-id>/<target>/` |
+| 用量防重複索引 | 已部署工作區根目錄下 `.orchestrator/dotnet-testing-lite/usage-turns/` |
+
+在已安裝 Lite 的工作區根目錄執行。以下以隨附 net10 練習專案為例；其他專案請替換引號內的 `.csproj` 路徑。
+Windows PowerShell、macOS 與 Linux 使用相同命令，清除只需要 Node.js 20.11+；Python／SQLite 是用量收集的相依，不是清除的前提。
+
+先預覽此測試專案全部可清除的已完成 run 與對應索引：
+
+```text
+node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project "samples/unit/practice/tests/Practice.Core.Net10.Tests/Practice.Core.Net10.Tests.csproj" --all-completed
+```
+
+確認清單並備份需要的證據後，加上 `--apply` 才會實際刪除：
+
+```text
+node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project "samples/unit/practice/tests/Practice.Core.Net10.Tests/Practice.Core.Net10.Tests.csproj" --all-completed --apply
+```
+
+**刪除單位是整個 run，不是只有用量網頁。** HTML、JSON、TRX、coverage 與該 run 的其他證據一併刪除，
+原網頁網址失效，不經資源回收筒；本次成功刪除 run 的索引同步移除。
+測試原始碼、`.csproj`、`bin/obj` 與 Codex 使用者目錄的 sessions／SQLite 不會被刪除。
+正在執行、observer 尚未收尾或狀態無法確認的 run 會保留；不要直接整棵刪除 `.orchestrator`。
+
+輸出 `selected` 與 `indexCleanup.selected` 是預覽範圍；`removed` 與 `indexCleanup.removed` 是實際刪除結果。
+`skipped` 列出跳過原因；`failures` 非空時命令回傳非零，可能已有部分 run 刪除成功。
+指定單次 run、保存天數及保留最近 N 次的命令，見[完整清理說明](.codex/scripts/dotnet-testing-lite/usage/README.md#保存與清理)。

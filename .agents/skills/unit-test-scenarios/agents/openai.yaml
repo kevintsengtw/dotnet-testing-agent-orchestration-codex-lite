@@ -1,4 +1,0 @@
-interface:
-  display_name: ".NET Unit Test Scenarios"
-  short_description: "分析 scope、priority、branches 與可追溯測試情境"
-  default_prompt: "Use $unit-test-scenarios to produce prioritized .NET Unit Test scenarios without writing test code."

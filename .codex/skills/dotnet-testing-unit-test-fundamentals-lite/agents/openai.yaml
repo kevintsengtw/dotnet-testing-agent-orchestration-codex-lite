@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Unit Test Fundamentals"
+  short_description: "FIRST、AAA、Fact 與 Theory 基礎規則"
+  default_prompt: "Use $dotnet-testing-unit-test-fundamentals-lite to design maintainable .NET Unit Tests."

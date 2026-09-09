@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Unit Supplemental Patterns"
+  short_description: "AutoFixture 與 legacy seam 的按需測試配方"
+  default_prompt: "Use $dotnet-testing-unit-patterns-lite for AutoFixture or legacy-boundary Unit Test patterns."

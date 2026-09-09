@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codex workflow token 用量</title>
+<style>body{font:17px/1.7 system-ui,sans-serif;max-width:850px;margin:48px auto;padding:0 24px;color:#172b40;background:#f5f7fa}main{padding:28px;background:white;border-radius:14px}h1{font-size:26px}td,th{text-align:left;padding:8px 20px 8px 0;border-bottom:1px solid #ddd}#message{font-weight:bold;color:#174c77}small{color:#526274}code{background:#eee;padding:2px 5px}li{margin:8px 0}</style>
+<main><h1>Codex：本次 workflow 用量</h1>
+<p id="message">正在等待 workflow 用量收尾…</p>
+<ol id="instructions" hidden></ol>
+<p>測試流程結果：<strong id="outcome">尚未完成</strong></p>
+<p>統計範圍：本次 workflow 的主代理與子代理。總量包含快取。</p><div style="overflow-x:auto"><table><tr><th>代理範圍</th><th>未快取輸入</th><th>快取輸入</th><th>輸出</th><th>總量（含快取）</th><th>請求數</th></tr><tbody id="values"></tbody></table></div>
+<p><small>總量 = 未快取輸入 + 快取輸入 + 輸出。推理用量已包含在輸出，不重複加總。這是 runtime 觀測快照，不是帳單。CLI 的退出摘要只列主代理，且 total 不含另外列出的 cached；不可直接與整個 workflow 總量比較。</small></p>
+<details id="credit-panel"><summary>選用：依 Standard 官方費率換算 credit</summary>
+<p>適用於 ChatGPT token-based credits；API key 與舊制企業方案不適用。結果為公開費率換算，不代表帳戶實際扣抵。</p>
+<p>官方費率查核日期：2026-09-07。<a href="https://learn.chatgpt.com/docs/pricing">官方費率</a>。本頁保留此版本費率。Sol 促銷費率官方註明至少適用至 2026-11-21。</p>
+<p>公式：credits =（未快取輸入 × 輸入費率 + 快取輸入 × 快取費率 + 輸出 × 輸出費率）÷ 1,000,000。推理強度不另乘倍率。</p>
+<div id="credit-settings"></div><button id="credit-standard">按 Standard 模式換算</button>
+<p>服務模式缺漏時，結果會明確標示為 Standard 前提試算，不把缺值改寫成已記錄的 Standard。</p>
+<div id="credit-details"></div><p id="credit-result" role="status">尚未換算。</p>
+<small>計算在前端完成，不呼叫模型。設定來源為當次 runtime 紀錄；未知模型不套用其他模型費率。</small></details>
+<p id="updated"></p></main>
+<script>
+let timer, latestGroups=[], creditActive=false;
+const officialRates={'gpt-6-astra':[250,25,1250],'gpt-5.6-sol':[100,10,500],'gpt-5.6-terra':[50,5,300],'gpt-5.6-luna':[5,0.5,30],'gpt-5.5':[125,12.5,750],'gpt-5.4':[62.5,6.25,375],'gpt-5.4-mini':[18.75,1.875,113]};
+const el=id=>document.getElementById('credit-'+id);
+const ratesFor=model=>Object.hasOwn(officialRates,model)?officialRates[model]:null;
+function quoteCredit(row){
+ const rates=ratesFor(row.model);if(!rates)throw Error('沒有已查核的模型費率：'+(row.model||'未知'));
+ if(row.serviceTier&&!['standard','default'].includes(row.serviceTier))throw Error('當次記錄不是 Standard 模式：'+row.serviceTier);
+ if(['uncached','cached','output'].some(k=>!Number.isSafeInteger(row[k])||row[k]<0))throw Error('用量資料缺漏');
+ const value=(row.uncached*rates[0]+row.cached*rates[1]+row.output*rates[2])/1000000;
+ if(!Number.isFinite(value)||value>Number.MAX_SAFE_INTEGER)throw Error('換算超出支援範圍');
+ return {value,conditional:!row.serviceTier,formula:`(${row.uncached} × ${rates[0]} + ${row.cached} × ${rates[1]} + ${row.output} × ${rates[2]}) ÷ 1,000,000`};
+}
+function updateCredit(){
+ el('settings').replaceChildren();
+ for(const r of latestGroups){const p=document.createElement('p');p.textContent=`${r.label}：${r.model||'模型未知'}／推理強度 ${r.effort||'未記錄'}／服務模式 ${r.serviceTier||'未記錄'}。來源：runtime turn_context。每百萬 tokens 官方費率（輸入／快取／輸出）：${ratesFor(r.model)?.join('／')||'未收錄'} credits。`;el('settings').append(p);}
+ if(!creditActive)return;
+ let total=0,missing=0,conditional=false;el('details').replaceChildren();
+ for(const r of latestGroups){const p=document.createElement('p');try{const q=quoteCredit(r);total+=q.value;conditional ||= q.conditional;p.textContent=`${r.label}：${q.formula} = ${q.value.toLocaleString(undefined,{maximumSignificantDigits:12})} credits${q.conditional?'（服務模式缺漏，按 Standard 前提試算）':''}`;}catch(e){missing++;p.textContent=r.label+'：無法換算，'+e.message;}el('details').append(p);}
+ el('result').textContent=missing||!latestGroups.length?'無法提供 workflow Standard credits 合計：設定、費率或用量有缺漏。':`${conditional?'Standard 前提試算合計':'Standard 模式換算合計'}：${total.toLocaleString(undefined,{maximumSignificantDigits:12})} credits（顯示值經四捨五入，非帳戶實際扣抵）。`;
+}
+el('standard').onclick=()=>{creditActive=true;updateCredit();};
+function render(s){
+latestGroups=s.creditGroups||[];updateCredit();
+document.getElementById('message').textContent=s.message;
+document.getElementById('outcome').textContent=s.outcome||'尚未完成';
+const body=document.getElementById('values');body.replaceChildren();
+for(const row of s.usageRows||[]){const tr=document.createElement('tr');for(const value of [row.label,row.uncached,row.cached,row.output,row.total,row.requests]){const td=document.createElement('td');td.textContent=typeof value==='string'?value:Number.isSafeInteger(value)?value.toLocaleString():'尚未取得';tr.append(td)}body.append(tr)}
+document.getElementById('instructions').hidden=Boolean(s.done);
+document.getElementById('updated').textContent='更新時間：'+(s.updatedAt||'');if(s.done)clearInterval(timer);}
+async function refresh(){try{const r=await fetch('/status',{cache:'no-store'});if(!r.ok)throw Error();render(await r.json());}
+catch{document.getElementById('updated').textContent='無法即時更新；若這是本機檔案，請在 workflow 最後回覆完成後稍候並重新整理。'}}
+if(window.acceptanceSnapshot){render(window.acceptanceSnapshot);}else{timer=setInterval(refresh,1500);refresh();}
+</script></html>

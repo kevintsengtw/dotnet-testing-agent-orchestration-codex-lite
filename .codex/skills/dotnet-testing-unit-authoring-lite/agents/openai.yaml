@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Unit Test Authoring"
+  short_description: "Coverage-first Unit Test 撰寫核心規則"
+  default_prompt: "Use $dotnet-testing-unit-authoring-lite to design focused high-coverage Unit Tests."

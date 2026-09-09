@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Test Naming Conventions"
+  short_description: "套用三段式測試方法名稱與 Tests 測試類別命名規則"
+  default_prompt: "Use $dotnet-testing-test-naming-conventions-lite to name .NET tests consistently."
