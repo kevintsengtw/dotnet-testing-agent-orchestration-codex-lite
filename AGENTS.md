@@ -18,7 +18,7 @@ Topology、repair 額度、coverage truth、terminal taxonomy、artifact 路徑�
 
 - `.codex/skills/dotnet-testing-lite-orchestrator-unit/**`
 - `.codex/agents/dotnet-testing-lite-unit-{author,verifier}.toml`
-- `.codex/scripts/dotnet-testing-lite/**`
+- `.codex/scripts/dotnet-testing-codex-lite/**`
 
 Contributor 若要改變 workflow 行為，必須修改上述資產與對應 deterministic tests，
 不得只在本檔補規則。

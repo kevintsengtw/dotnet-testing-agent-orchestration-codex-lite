@@ -35,7 +35,7 @@ function parseArgs(argv) {
 
 function usage() {
   return `Usage:
-  node .codex/scripts/dotnet-testing-lite/run-coverage.mjs \\
+  node .codex/scripts/dotnet-testing-codex-lite/run-coverage.mjs \\
     --test-project <tests.csproj> \\
     --target-source <source.cs> \\
     --target-class <ClassName> \\
@@ -100,7 +100,7 @@ function verifyProductionIntegrity(baselinePath) {
   if (!baselinePath) return { status: "not_checked" };
   const result = spawnSync(
     process.execPath,
-    [".codex/scripts/dotnet-testing-lite/gates/check-production-integrity.mjs", "verify", "--manifest", baselinePath],
+    [".codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs", "verify", "--manifest", baselinePath],
     { cwd: process.cwd(), encoding: "utf8" },
   );
   let details;

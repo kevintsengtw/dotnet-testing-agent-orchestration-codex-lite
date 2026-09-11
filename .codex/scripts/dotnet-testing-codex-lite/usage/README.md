@@ -41,16 +41,16 @@ Windows、macOS 與 Linux 均使用同一個 Node.js cleanup CLI。所有命令�
 
 ```text
 # 預覽或刪除指定 run
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --run-id <run-id>
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --run-id <run-id> --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --run-id <run-id>
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --run-id <run-id> --apply
 
 # 刪除超過 30 天的 run，但至少保留最近 10 個已完成 run
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10 --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10 --apply
 
 # 預覽或刪除全部已完成 run
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --all-completed
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --all-completed --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --all-completed
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --all-completed --apply
 ```
 
 Cleanup 只需要 Node.js 20.11+，不執行 Python、不查詢或刪除 Codex sessions／SQLite。
@@ -68,8 +68,8 @@ HTML 是內嵌資料快照，可單獨備份；它不會持續讀取資料庫，
 含空白路徑的 PowerShell／bash／zsh 共用範例：
 
 ```text
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project "tests/My Project/My.Tests.csproj" --all-completed --keep 10
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project "tests/My Project/My.Tests.csproj" --all-completed --keep 10 --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project "tests/My Project/My.Tests.csproj" --all-completed --keep 10
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project "tests/My Project/My.Tests.csproj" --all-completed --keep 10 --apply
 ```
 
 ## Observer 中斷與復原
@@ -84,8 +84,8 @@ Observer 持有整段生命週期的 writer 鎖；完整 JSON 與 HTML 寫妥才
 若 PID 被重用，寧可保留；舊版缺乏 owner 的 run 不自動移除，需先備份並人工核對原 observer。
 
 ```text
-node .codex/scripts/dotnet-testing-lite/usage/recover.mjs "tests/My Project/.orchestrator/runs/RUN/TARGET/usage"
-node .codex/scripts/dotnet-testing-lite/usage/recover.mjs "tests/My Project/.orchestrator/runs/RUN/TARGET/usage" --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/recover.mjs "tests/My Project/.orchestrator/runs/RUN/TARGET/usage"
+node .codex/scripts/dotnet-testing-codex-lite/usage/recover.mjs "tests/My Project/.orchestrator/runs/RUN/TARGET/usage" --apply
 ```
 
 復原只發布 incomplete 用量快照，不會改 workflow terminal decision 或解除 active-run lock。
@@ -95,8 +95,8 @@ node .codex/scripts/dotnet-testing-lite/usage/recover.mjs "tests/My Project/.orc
 run cleanup 會同步預覽並移除本次成功刪除 run 的對應索引，一般清理不需要再執行另一道命令。只有曾手動刪除 run 或索引清理失敗時，才使用下列命令清理孤立索引；仍有 run、損毀或未知項目保留：
 
 ```text
-node .codex/scripts/dotnet-testing-lite/usage/workspace-index.mjs
-node .codex/scripts/dotnet-testing-lite/usage/workspace-index.mjs --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/workspace-index.mjs
+node .codex/scripts/dotnet-testing-codex-lite/usage/workspace-index.mjs --apply
 ```
 
 索引跟隨工作區管理；移除 Lite 前先完成以上清理，或在整個工作區完成證據備份後一起移除。

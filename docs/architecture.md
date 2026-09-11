@@ -5,7 +5,7 @@ Lite workflow 只有兩個 subagent；Main 不再手工組合 gates、paths 或 
 
 ```text
 Main
-  └─ .codex/scripts/dotnet-testing-lite/workflow.mjs start / advance
+  └─ .codex/scripts/dotnet-testing-codex-lite/workflow.mjs start / advance
        ├─ Lite Unit Author initial
        ├─ Lite Unit Verifier initial
        │    ├─ pass / best_effort / blocked / not_suitable / fail → terminal
@@ -35,7 +35,7 @@ Lite 的 AwesomeAssertions 新專案預設值定義在 Author policy，不修改
 
 ## Truth and terminal states
 
-- Build/test：`.codex/scripts/dotnet-testing-lite/run-coverage.mjs`、TRX 與 process exit。
+- Build/test：`.codex/scripts/dotnet-testing-codex-lite/run-coverage.mjs`、TRX 與 process exit。
 - Coverage：指定 target class 的 Cobertura line／branch。
 - User scenarios：author result mapping 與 deterministic gate。
 - Quality：verifier issues；uncoverable gap 必須附公開 API 反證。

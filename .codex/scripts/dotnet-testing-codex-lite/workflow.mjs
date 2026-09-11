@@ -320,7 +320,7 @@ function start(args) {
         text,
       })),
     }, { exclusive: true });
-    requireSuccess(".codex/scripts/dotnet-testing-lite/gates/check-production-integrity.mjs", [
+    requireSuccess(".codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs", [
       "capture",
       "--target-source", targetSourcePath,
       "--output", paths.productionBaseline,
@@ -370,7 +370,7 @@ function projectGate(manifest, author, mode) {
   ];
   if (["no_valuable_tests", "blocked"].includes(author.status)) args.push("--allow-no-test-files");
   else for (const testFile of author.testFilePaths ?? []) args.push("--test-file", testFile);
-  requireSuccess(".codex/scripts/dotnet-testing-lite/gates/check-test-project.mjs", args);
+  requireSuccess(".codex/scripts/dotnet-testing-codex-lite/gates/check-test-project.mjs", args);
 }
 
 function createNoTestVerificationBase(manifest, author, outputPath) {
@@ -402,13 +402,13 @@ function authorGates(manifest, authorPath, mode) {
       buildOutputRoots: buildOutputRoots(manifest, repoRoot),
     });
   }
-  requireSuccess(".codex/scripts/dotnet-testing-lite/gates/check-unit-author-result.mjs", [
+  requireSuccess(".codex/scripts/dotnet-testing-codex-lite/gates/check-unit-author-result.mjs", [
     authorPath,
     "--user-scenarios", manifest.paths.userScenarios,
   ]);
   projectGate(manifest, author, mode === "repair" ? "final" : "initial");
   if (!["no_valuable_tests", "blocked"].includes(author.status)) {
-    requireSuccess(".codex/scripts/dotnet-testing-lite/gates/check-test-integrity.mjs", [
+    requireSuccess(".codex/scripts/dotnet-testing-codex-lite/gates/check-test-integrity.mjs", [
       "capture",
       "--author-result", authorPath,
       "--output", mode === "repair"
@@ -426,7 +426,7 @@ function verifierGates(manifest, verificationPath, mode) {
     : manifest.paths.testIntegrityInitial;
   if (fs.existsSync(integrityPath)) {
     try {
-      requireSuccess(".codex/scripts/dotnet-testing-lite/gates/check-test-integrity.mjs", ["verify", "--manifest", integrityPath]);
+      requireSuccess(".codex/scripts/dotnet-testing-codex-lite/gates/check-test-integrity.mjs", ["verify", "--manifest", integrityPath]);
       manifest.testIntegrityStatus = "passed";
     } catch (error) {
       manifest.testIntegrityStatus = "failed";
@@ -456,7 +456,7 @@ function verifierGates(manifest, verificationPath, mode) {
   }
   const authorPath = mode === "final" ? manifest.paths.authorRepair : manifest.paths.authorInitial;
   const author = readJson(authorPath);
-  requireSuccess(".codex/scripts/dotnet-testing-lite/gates/check-unit-author-result.mjs", [
+  requireSuccess(".codex/scripts/dotnet-testing-codex-lite/gates/check-unit-author-result.mjs", [
     authorPath,
     "--user-scenarios", manifest.paths.userScenarios,
   ]);
@@ -493,7 +493,7 @@ function verifierGates(manifest, verificationPath, mode) {
     repairManifestPath: decision === "needs_repair" ? manifest.paths.repair : null,
   };
   writeJson(verificationPath, verification);
-  requireSuccess(".codex/scripts/dotnet-testing-lite/validate-result.mjs", [
+  requireSuccess(".codex/scripts/dotnet-testing-codex-lite/validate-result.mjs", [
     "--manifest", verificationPath,
     "--require-quality",
   ]);
@@ -513,7 +513,7 @@ function releaseActiveLock(manifest) {
 }
 
 function productionIntegrity(manifest) {
-  const result = runNode(".codex/scripts/dotnet-testing-lite/gates/check-production-integrity.mjs", [
+  const result = runNode(".codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs", [
     "verify", "--manifest", manifest.paths.productionBaseline,
   ]);
   try {

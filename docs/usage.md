@@ -29,11 +29,11 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 ## 直接執行 coverage runner
 
 在已部署 `.codex/` 與 `.codex/skills/` 的專案根目錄，依
-`dotnet-test-lite` Skill 執行 `.codex/scripts/dotnet-testing-lite/run-coverage.mjs`。
+`dotnet-testing-lite` Skill 執行 `.codex/scripts/dotnet-testing-codex-lite/run-coverage.mjs`。
 五個 workflow 參數為 `--test-project`、`--target-source`、`--target-class`、
 `--output` 與 `--production-baseline`。Baseline 必須先由 production integrity gate
 的 `capture --target-source <source.cs> --output <baseline.json>` 建立；gate 位於
-`.codex/scripts/dotnet-testing-lite/gates/check-production-integrity.mjs`。
+`.codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs`。
 每次使用新的 output 路徑，runner 會保留 TRX、Cobertura 與 production integrity 結果。
 
 v1.1.1 修正了 v1.1.0 Skill 的入口參照。升級須更新完整 Lite 部署資產；
@@ -114,14 +114,14 @@ Codex CLI／Extension 的一般 Lite workflow 提示詞會由 driver 自動啟�
 提供主代理與子代理的用量及選用 Standard credit 試算，不需 `/exit`。
 目前限一個主代理回合內的一個 workflow。不自動開啟瀏覽器。
 Windows 的 CLI 與 Extension 已使用明確指定 Lite skill 的提示詞，完成最新部署的實際用量收集及網址交付驗收；Runtime 提交 `82f3dd3` 的遠端三平台 CI 已通過。
-條件、停用方式與失敗處理見 [Codex 自動用量說明](../.codex/scripts/dotnet-testing-lite/usage/README.md)。
+條件、停用方式與失敗處理見 [Codex 自動用量說明](../.codex/scripts/dotnet-testing-codex-lite/usage/README.md)。
 
 每次執行會新增獨立 run 目錄，用量與測試證據不會自動清除。跨平台清理工具預設只預覽；
 加上 `--apply` 才刪除可確認已完成且用量 observer 已收尾的 run：
 
 ```text
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10 --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <test-project.csproj> --older-than-days 30 --keep 10 --apply
 ```
 
 亦可改用 `--run-id <run-id>` 指定一次執行，或用 `--all-completed` 選取所有已完成 run。
@@ -142,10 +142,10 @@ Runtime、兩個 Lite agents、orchestrator 與 13 個 `-lite` 技能為完整�
 部署工具只需要 Node.js 20.11+。預覽不寫檔；`--apply` 套用。
 
 ```text
-node .codex/scripts/dotnet-testing-lite/deploy.mjs --workspace "../My Project"
-node .codex/scripts/dotnet-testing-lite/deploy.mjs --workspace "../My Project" --apply
-node .codex/scripts/dotnet-testing-lite/deploy.mjs --workspace "../My Project" --remove
-node .codex/scripts/dotnet-testing-lite/deploy.mjs --workspace "../My Project" --remove --apply
+node .codex/scripts/dotnet-testing-codex-lite/deploy.mjs --workspace "../My Project"
+node .codex/scripts/dotnet-testing-codex-lite/deploy.mjs --workspace "../My Project" --apply
+node .codex/scripts/dotnet-testing-codex-lite/deploy.mjs --workspace "../My Project" --remove
+node .codex/scripts/dotnet-testing-codex-lite/deploy.mjs --workspace "../My Project" --remove --apply
 ```
 
 更新時由新的完整快照執行相同 install 命令。receipt 保存於工作區
@@ -179,9 +179,9 @@ Lab 的 `sync-public.mjs` 用於專用 public checkout，會整理受管目錄�
 包括用量與測試證據，舊網址會失效且不經資源回收筒；重要證據請先備份。
 不刪除 Codex sessions／SQLite、測試原始碼、csproj 或專案 bin／obj。
 Cleanup 與復原只需要 Node.js；Python 3.8+ sqlite3 僅供 observer 收集用量。
-異常中斷、含空白路徑及三平台命令見 [保存與清理](../.codex/scripts/dotnet-testing-lite/usage/README.md#保存與清理)。
+異常中斷、含空白路徑及三平台命令見 [保存與清理](../.codex/scripts/dotnet-testing-codex-lite/usage/README.md#保存與清理)。
 
-用量索引固定跟隨已部署工作區：`.orchestrator/dotnet-testing-lite/usage-turns/`；不建立全域索引。run cleanup 會同步預覽對應索引，套用時只移除本次成功刪除 run 的索引。仍有 run、正在寫入或刪除失敗的索引會保留；不在 workflow 啟動前清空 `.orchestrator`。若曾手動移除 run 或索引清理失敗，可執行 `node .codex/scripts/dotnet-testing-lite/usage/workspace-index.mjs` 預覽孤立索引，加 `--apply` 才移除。索引清理失敗會單獨列在 `indexCleanup.failures`，命令回傳非零；已刪除的 run 不會復原。清理工具只需要 Node.js，不需要 Python／SQLite。
+用量索引固定跟隨已部署工作區：`.orchestrator/dotnet-testing-lite/usage-turns/`；不建立全域索引。run cleanup 會同步預覽對應索引，套用時只移除本次成功刪除 run 的索引。仍有 run、正在寫入或刪除失敗的索引會保留；不在 workflow 啟動前清空 `.orchestrator`。若曾手動移除 run 或索引清理失敗，可執行 `node .codex/scripts/dotnet-testing-codex-lite/usage/workspace-index.mjs` 預覽孤立索引，加 `--apply` 才移除。索引清理失敗會單獨列在 `indexCleanup.failures`，命令回傳非零；已刪除的 run 不會復原。清理工具只需要 Node.js，不需要 Python／SQLite。
 
 
 ## Workflow 用量資料的留存與清除
@@ -200,13 +200,13 @@ Windows PowerShell、macOS 與 Linux 使用相同命令，清除只需要 Node.j
 先預覽此測試專案全部可清除的已完成 run 與對應索引：
 
 ```text
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project "samples/unit/practice/tests/Practice.Core.Net10.Tests/Practice.Core.Net10.Tests.csproj" --all-completed
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project "samples/unit/practice/tests/Practice.Core.Net10.Tests/Practice.Core.Net10.Tests.csproj" --all-completed
 ```
 
 確認清單並備份需要的證據後，加上 `--apply` 才會實際刪除：
 
 ```text
-node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project "samples/unit/practice/tests/Practice.Core.Net10.Tests/Practice.Core.Net10.Tests.csproj" --all-completed --apply
+node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project "samples/unit/practice/tests/Practice.Core.Net10.Tests/Practice.Core.Net10.Tests.csproj" --all-completed --apply
 ```
 
 **刪除單位是整個 run，不是只有用量網頁。** HTML、JSON、TRX、coverage 與該 run 的其他證據一併刪除，
@@ -216,7 +216,7 @@ node .codex/scripts/dotnet-testing-lite/usage/cleanup.mjs --test-project "sample
 
 輸出 `selected` 與 `indexCleanup.selected` 是預覽範圍；`removed` 與 `indexCleanup.removed` 是實際刪除結果。
 `skipped` 列出跳過原因；`failures` 非空時命令回傳非零，可能已有部分 run 刪除成功。
-指定單次 run、保存天數及保留最近 N 次的命令，見[完整清理說明](../.codex/scripts/dotnet-testing-lite/usage/README.md#保存與清理)。
+指定單次 run、保存天數及保留最近 N 次的命令，見[完整清理說明](../.codex/scripts/dotnet-testing-codex-lite/usage/README.md#保存與清理)。
 
 ## 建置失敗後的受控重跑
 

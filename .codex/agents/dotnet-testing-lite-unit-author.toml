@@ -36,8 +36,8 @@ AwesomeAssertions；需要替身時優先沿用現有library，沒有慣例時�
 完成初稿後執行必要的命名、build與test檢查，結果只作Author工作回饋，不是workflow machine truth：
 
 ```powershell
-node .codex/scripts/dotnet-testing-lite/gates/check-test-naming-conventions.mjs --strict <testFilePaths...>
-node .codex/scripts/dotnet-testing-lite/gates/check-test-build.mjs --test-project <testProjectPath>
+node .codex/scripts/dotnet-testing-codex-lite/gates/check-test-naming-conventions.mjs --strict <testFilePaths...>
+node .codex/scripts/dotnet-testing-codex-lite/gates/check-test-build.mjs --test-project <testProjectPath>
 dotnet test <testProjectPath> --nologo --verbosity minimal
 ```
 

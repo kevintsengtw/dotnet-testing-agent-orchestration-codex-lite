@@ -35,13 +35,13 @@ build、test、coverage或重建workflow結果。
 Main只使用以下兩個公開介面：
 
 ```powershell
-node .codex/scripts/dotnet-testing-lite/workflow.mjs start `
+node .codex/scripts/dotnet-testing-codex-lite/workflow.mjs start `
   --target-source <targetSourcePath> `
   --target-class <targetClass> `
   --test-project <testProjectPath> `
   [--scenario <userScenario> ...]
 
-node .codex/scripts/dotnet-testing-lite/workflow.mjs advance `
+node .codex/scripts/dotnet-testing-codex-lite/workflow.mjs advance `
   --manifest <manifestPath>
 ```
 

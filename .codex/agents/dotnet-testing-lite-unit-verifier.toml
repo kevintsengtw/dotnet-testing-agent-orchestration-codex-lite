@@ -24,8 +24,8 @@ terminal由driver管理，不在review中重新聲明。
 integrity：
 
 ```powershell
-node .codex/scripts/dotnet-testing-lite/run-coverage.mjs --test-project <testProjectPath> --target-source <targetSourcePath> --target-class <targetClass> --output <verificationOutputPath> --production-baseline <productionBaselinePath>
-node .codex/scripts/dotnet-testing-lite/artifacts/create-coverage-summary.mjs --coverage-base <verificationOutputPath> --output <verificationOutputPath>.summary.json
+node .codex/scripts/dotnet-testing-codex-lite/run-coverage.mjs --test-project <testProjectPath> --target-source <targetSourcePath> --target-class <targetClass> --output <verificationOutputPath> --production-baseline <productionBaselinePath>
+node .codex/scripts/dotnet-testing-codex-lite/artifacts/create-coverage-summary.mjs --coverage-base <verificationOutputPath> --output <verificationOutputPath>.summary.json
 ```
 
 只讀compact summary，不重建machine counts。No-test交付由driver先在`verificationOutputPath`建立
@@ -113,7 +113,7 @@ Runner base是machine truth。你只寫`<verificationOutputPath>.supplement.json
 merge；driver會再次驗證結果：
 
 ```powershell
-node .codex/scripts/dotnet-testing-lite/artifacts/merge-verifier-result.mjs --coverage-base <verificationOutputPath> --supplement <verificationOutputPath>.supplement.json --output <verificationOutputPath>
+node .codex/scripts/dotnet-testing-codex-lite/artifacts/merge-verifier-result.mjs --coverage-base <verificationOutputPath> --supplement <verificationOutputPath>.supplement.json --output <verificationOutputPath>
 ```
 
 Gate失敗只回報compact failure，不修改delivery或machine結果。對話只回傳review結論、重要gap、

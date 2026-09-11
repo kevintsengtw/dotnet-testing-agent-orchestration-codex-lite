@@ -105,7 +105,7 @@ const strict = process.argv.includes("--strict");
 const fileArgs = process.argv.slice(2).filter((input) => input !== "--strict").map((input) => path.resolve(input));
 
 if (fileArgs.length === 0) {
-  console.error("Usage: node .codex/scripts/dotnet-testing-lite/gates/check-test-naming-conventions.mjs [--strict] <testFile1> [testFile2...]");
+  console.error("Usage: node .codex/scripts/dotnet-testing-codex-lite/gates/check-test-naming-conventions.mjs [--strict] <testFile1> [testFile2...]");
   process.exit(2);
 }
 

@@ -5,17 +5,24 @@ import { pathToFileURL } from 'node:url';
 import { acquire, assertPlainPath, assertPlainTree, atomicJson, readJson } from './usage/lifecycle.mjs';
 
 export const skills = [
-  'dotnet-test', 'dotnet-testing-awesome-assertions-guide', 'dotnet-testing-code-coverage-analysis',
-  'dotnet-testing-datetime-testing-timeprovider', 'dotnet-testing-filesystem-testing-abstractions',
-  'dotnet-testing-fluentvalidation-testing', 'dotnet-testing-nsubstitute-mocking',
-  'dotnet-testing-test-naming-conventions', 'dotnet-testing-unit-authoring', 'dotnet-testing-unit-patterns',
-  'dotnet-testing-unit-test-fundamentals', 'dotnet-testing-xunit-project-setup', 'unit-test-scenarios',
-].map(name => `${name}-lite`);
-const roots = ['.codex/scripts/dotnet-testing-lite', '.codex/skills/dotnet-testing-lite-orchestrator-unit',
+  'dotnet-testing-lite', 'dotnet-testing-awesome-assertions-guide-lite',
+  'dotnet-testing-code-coverage-analysis-lite', 'dotnet-testing-datetime-testing-timeprovider-lite',
+  'dotnet-testing-filesystem-testing-abstractions-lite', 'dotnet-testing-fluentvalidation-testing-lite',
+  'dotnet-testing-nsubstitute-mocking-lite', 'dotnet-testing-test-naming-conventions-lite',
+  'dotnet-testing-unit-authoring-lite', 'dotnet-testing-unit-patterns-lite',
+  'dotnet-testing-unit-test-fundamentals-lite', 'dotnet-testing-xunit-project-setup-lite',
+  'unit-test-scenarios-lite',
+];
+const roots = ['.codex/scripts/dotnet-testing-codex-lite', '.codex/skills/dotnet-testing-lite-orchestrator-unit',
   ...skills.map(name => `.codex/skills/${name}`)];
+const retiredOwnedRoots = [
+  '.codex/scripts/dotnet-testing-lite',
+  '.codex/skills/dotnet-test-lite',
+];
 const agents = ['author', 'verifier'].map(role => `.codex/agents/dotnet-testing-lite-unit-${role}.toml`);
 const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const owned = name => agents.includes(name) || roots.some(root => name.startsWith(root + '/'));
+const owned = name => agents.includes(name) || [...roots, ...retiredOwnedRoots]
+  .some(root => name.startsWith(root + '/'));
 function files(directory, prefix) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => entry.isDirectory()
     ? files(path.join(directory, entry.name), `${prefix}/${entry.name}`) : [`${prefix}/${entry.name}`]);

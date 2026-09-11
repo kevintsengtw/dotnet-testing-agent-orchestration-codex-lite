@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+## [v1.1.3] - 2026-09-10
+
+### 新增
+
+- 發布流程在建立 GitHub Release 後下載 ZIP 與 tar.gz，逐份拒絕 Full 專用 scripts、
+  根目錄 `scripts/` 及其他越界項目，並要求 Lite workflow driver 存在；兩份封存檔的
+  SHA-256 會寫入 workflow summary。
+
+### 移除
+
+- Lite runtime 目錄由 `.codex/scripts/dotnet-testing-lite/` 完整遷移為
+  `.codex/scripts/dotnet-testing-codex-lite/`，提升與一般 Lite 技能名稱的辨識度；deploy
+  更新會移除舊 receipt 管理且內容未變更的 runtime 檔案，保留使用者修改或外來檔案。
+- 移除只為早期對照驗證匯入、目前不再使用的原版 Full Unit workflow 共存資產：四個 agents、
+  Orchestrator、兩個 scripts、validator、scenario gate、誤置的 `dotnet-test` 鏡像，以及八個
+  advanced／Integration／TUnit 技能鏡像；保留基礎導覽與 xUnit v2 升級至 v3 的專門技能。
+- Lite coverage runner skill 由 `dotnet-test-lite` 完整重新命名為 `dotnet-testing-lite`；
+  部署與移除保留外部 `.codex/skills/dotnet-test`。
+- 發布來源檢查加入已退役 Full 資產禁止清單，避免後續誤將整組共存安裝帶回 Lab。
+
+### 驗證
+
+- 已下載既有 `v1.1.2` GitHub Release 的 ZIP 與 tar.gz 實際檢查；兩者各有 278 個原始
+  清單項目，`estimate-token-usage.mjs`、`run-state.mjs`、根目錄 `scripts/` 及其他
+  `.codex/scripts/` 子項均為 0，必要 Lite driver 存在。
+- 最新 Windows Repository Node tests：180/180 通過。
+
 ## [v1.1.2] - 2026-09-09
 
 ### 新增

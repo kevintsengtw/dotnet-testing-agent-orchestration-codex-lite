@@ -1,14 +1,14 @@
 ---
-name: dotnet-test-lite
+name: dotnet-testing-lite
 description: Build-first 執行 xUnit、收集 Cobertura並產生 target-scoped coverage manifest。
 ---
 
-# dotnet-test-lite
+# dotnet-testing-lite
 
 正式 workflow 一律從已部署資產的專案根目錄執行 runner：
 
 ```bash
-node .codex/scripts/dotnet-testing-lite/run-coverage.mjs \
+node .codex/scripts/dotnet-testing-codex-lite/run-coverage.mjs \
   --test-project <tests.csproj> \
   --target-source <source.cs> \
   --target-class <ClassName> \
