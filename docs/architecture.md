@@ -5,19 +5,23 @@ Lite workflow 只有兩個 subagent；Main 不再手工組合 gates、paths 或 
 
 ```text
 Main
-  └─ .codex/scripts/dotnet-testing-codex-lite/workflow.mjs start / advance
-       ├─ Lite Unit Author initial
-       ├─ Lite Unit Verifier initial
-       │    ├─ pass / best_effort / blocked / not_suitable / fail → terminal
-       │    ├─ tool_incident / environment protection → stopped
-       │    └─ needs_repair
-       └─ Lite Unit Author repair → Lite Unit Verifier final → terminal
+  └─ .codex/scripts/dotnet-testing-codex-lite/nuget-sandbox-preflight.mjs
+       └─ status=ready → .codex/scripts/dotnet-testing-codex-lite/workflow.mjs start / advance
+            ├─ Lite Unit Author initial
+            ├─ Lite Unit Verifier initial
+            │    ├─ pass / best_effort / blocked / not_suitable / fail → terminal
+            │    ├─ tool_incident / environment protection → stopped
+            │    └─ needs_repair
+            └─ Lite Unit Author repair → Lite Unit Verifier final → terminal
 ```
 
+NuGet 預檢在目前 Codex 沙箱先檢查既有 test project，若尚未建立則檢查 target 對應的
+來源專案；預檢受阻時不建立 run 或派遣代理。
 Driver 是 lifecycle 的唯一狀態真相，負責唯一 run identity、
 `.orchestrator/runs/<run-id>/<target>/` 路徑、同 test project active lock、phase 順序、
 deterministic gates、一次 repair 額度、結果投影。Main 只傳遞完整
 action payload，不解讀 agent artifact，也不直接呼叫 leaf scripts。
+派遣 Author／Verifier 時使用對應 TOML 的具名角色，不以 `default` 或派遣參數覆蓋模型。
 
 Author 同時完成分析、測試撰寫與實測，省略大型 analysis handoff。Verifier 在同一
 context 完成 build、test、target-scoped coverage 與品質審查。repair 與 final 沿用

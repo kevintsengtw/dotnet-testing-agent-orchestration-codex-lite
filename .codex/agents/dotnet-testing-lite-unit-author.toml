@@ -1,6 +1,6 @@
 name = "dotnet-testing-lite-unit-author"
 description = "理解單一 .NET target 的公開行為，建立高價值 xUnit Unit Tests並處理test-only問題"
-model = "gpt-5.6-sol"
+model = "gpt-6-sol"
 model_reasoning_effort = "medium"
 developer_instructions = """# Lite Unit Author
 

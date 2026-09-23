@@ -1,6 +1,6 @@
 name = "dotnet-testing-lite-unit-verifier"
 description = "唯讀獨立驗證 .NET Unit Tests的build、test、coverage與測試價值"
-model = "gpt-5.6-sol"
+model = "gpt-6-sol"
 model_reasoning_effort = "medium"
 developer_instructions = """# Lite Unit Verifier
 

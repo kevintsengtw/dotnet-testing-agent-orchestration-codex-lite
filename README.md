@@ -15,14 +15,22 @@ Lite driver 不產生 token 估算，也不把用量數字寫入 machine result�
 
 操作步驟、已驗收的用量範例及保存方式見[用量網頁與 credit 試算](docs/usage.md#用量網頁與-credit-試算)。
 
+v1.2.0 的 Windows Codex CLI 完整驗證中，NuGet 預檢回傳 `ready`，32/32 測試通過，
+Line／Branch coverage 均為 100%。主代理、Author 與 Verifier 的 runtime 模型均為
+`gpt-6-sol`／`medium`；用量 963,642 tokens（含快取），依頁面保存費率的 Standard
+前提試算為 10.54162 credits，非帳戶實際扣抵。完整條件見[使用說明](docs/usage.md#v120-完整流程驗證)。
+
 ![Windows CLI 驗收的用量網頁：各代理用量與 Standard 前提 credit 試算](docs/images/workflow-usage-credit.png)
 
-圖為 2026-09-08 已完成的 Windows CLI 驗收：50 requests、1,769,022 tokens（含快取），依頁面保存費率的 Standard 前提試算為 36.1758 credits，非帳戶實際扣抵。
+圖為 2026-09-08 的歷史 Windows CLI 驗收，使用當時的 GPT-5.6 Sol 配置：50 requests、
+1,769,022 tokens（含快取），依當時頁面保存費率的 Standard 前提試算為 36.1758 credits，
+非帳戶實際扣抵；上方 v1.2.0 驗證沒有使用這張截圖。
 
 ## Workflow
 
 ```text
 Lite Orchestrator
+  → 目前 Codex 沙箱的 NuGet 還原預檢
   → deterministic driver（run identity、gates、terminal state）
   → Lite Unit Author（分析目標並撰寫測試）
   → Lite Unit Verifier（build、test、coverage、品質檢查）
@@ -33,17 +41,18 @@ Lite Orchestrator
 
 | Agent 設定 | 預設模型 | 推理強度 |
 | --- | --- | --- |
-| `.codex/agents/dotnet-testing-lite-unit-author.toml` | GPT-5.6 Sol（`gpt-5.6-sol`） | `medium` |
-| `.codex/agents/dotnet-testing-lite-unit-verifier.toml` | GPT-5.6 Sol（`gpt-5.6-sol`） | `medium` |
+| `.codex/agents/dotnet-testing-lite-unit-author.toml` | GPT-6 Sol（`gpt-6-sol`） | `medium` |
+| `.codex/agents/dotnet-testing-lite-unit-verifier.toml` | GPT-6 Sol（`gpt-6-sol`） | `medium` |
 
-兩個 Lite agent 都預設使用 GPT-5.6 Sol／medium。GPT-5.6 Sol 與 GPT-5.5
-的單位費率相同，因此預設採用新版 Sol，不額外提高單位成本。這項設定不改變
+兩個 Lite agent 都預設使用 GPT-6 Sol／medium。用量網頁依 runtime 記錄的模型與
+Standard 費率換算 credit；目前支援 GPT-6 Sol 與 GPT-6 Luna。這項設定不改變
 workflow topology、repair 額度、coverage 規則或品質門檻；需要採用其他模型時，
 可直接調整對應 TOML 的 `model` 與 `model_reasoning_effort`。
 
 ## 使用方式
 
-從已信任的 workspace root 啟動 Codex，確認 repo-local skill 可見後輸入：
+從已信任的 workspace root 啟動 Codex，或以 CLI 的 `-C <workspace-root>` 明確指定目錄；
+確認 repo-local skill 可見後輸入：
 
 ```text
 呼叫 $dotnet-testing-lite-orchestrator-unit。
@@ -56,6 +65,11 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 `test project` 可以指向既有 csproj，也可以是預計建立的新 path。新專案會依
 solution 的 target framework、中央套件版本與 project reference 建立最小 xUnit
 scaffold。
+
+Orchestrator 在建立 run 前，先於目前 Codex 沙箱對既有 test project 執行 NuGet 還原預檢；
+若 test project 尚未建立，改預檢 target 對應的來源專案。只有預檢回傳 `ready` 才啟動 driver
+與派遣具名 Author、Verifier。還原受阻時會回報原因並停止；若本機已有套件但沙箱無法取得，
+可於啟動 CLI 時指定可讀的 `NUGET_PACKAGES` 快取。指令與限制見[使用說明](docs/usage.md#prompt)。
 
 每次 workflow 的測試與用量證據會保存在 test project 的 `.orchestrator/runs/`，不會自動清除。
 Windows、macOS 與 Linux 可使用相同的 Node.js CLI 預覽並清理已完成 run；未加 `--apply`
@@ -91,7 +105,7 @@ workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
 ## 獨立部署與升級
 
-v1.1.2 的變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。
+v1.2.0 的變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。
 
 本次 runtime 使用 `.codex/scripts/dotnet-testing-codex-lite/`，13 個技術技能使用
 `.codex/skills/*-lite/`；不依賴 Full 部署資產。安裝範圍為工作區，不建立全域安裝。

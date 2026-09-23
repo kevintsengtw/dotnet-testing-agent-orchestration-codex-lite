@@ -4,6 +4,43 @@
 
 ## [Unreleased]
 
+## [v1.2.0] - 2026-09-23
+
+### 新增
+
+- Lite Orchestrator 在建立 run 與派遣代理前，於目前 Codex 沙箱預檢指定測試專案的
+  NuGet 還原；測試專案尚未建立時改檢查 target 對應的來源專案。還原受阻會回報診斷並停止，
+  不建立本次 run。
+- 預檢可使用預設 NuGet 快取或 `NUGET_PACKAGES` 指定的快取；文件補上單次 Codex CLI
+  啟動參數，方便在沙箱中使用本機既有套件。
+
+### 調整
+
+- Lite Unit Author 與 Verifier 改用 `gpt-6-sol`、`medium`。
+- Lab 日常開發代理規則同步改用 GPT-6 Luna／Sol，並明確排除 Lite workflow 專用代理，
+  避免覆蓋兩份 agent TOML 的模型設定。Orchestrator 派遣 Author／Verifier 時明確使用具名
+  `agent_type`，不使用 `default` 或派遣參數覆蓋 TOML 模型。
+- 用量網頁加入 GPT-6 Sol 與 Luna 的 Standard credit 費率，依 runtime 模型分組換算；
+  保留舊模型費率供歷史紀錄使用，並更新費率查核日期。
+- 公開 README、使用說明與架構文件補上指定工作區、NuGet 預檢及 v1.2.0 完整 CLI 驗證；
+  2026-09-08 的 GPT-5.6 Sol 截圖明確標為歷史驗收。
+
+### 驗證
+
+- 首次提交時 Node 測試 188/188 通過，涵蓋 NuGet 預檢、用量網頁與發布資產快照；
+  派遣規則修正後，相關契約與公開快照測試 17/17 通過。
+- net10 sample 的 CLI 完整 workflow 為 32/32 測試通過、Line／Branch coverage 均 100%，
+  三個代理均記錄為 `gpt-6-sol`。該次執行早於 NuGet 預檢加入，因此不視為預檢驗證。
+- 首次 net9 sample 在 Codex CLI 沙箱因 `nuget.org` 無法連線且未取得所需套件，預檢回報
+  `nuget-restore-unavailable` 並停止。指定可讀的 `NUGET_PACKAGES` 後，`Practice.Core.Tests`
+  sample 的預檢回報 `ready`，完整 workflow 通過 32/32 測試、Line／Branch coverage 均 100%；
+  但子代理受舊開發協作規則影響，實際仍為 `gpt-5.6-sol`。
+- 修正派遣規則後，在指定的 Lab 工作區重跑 `Practice.Core.Tests`（run
+  `20260923070820-TemperatureConverter-52fa36b7`）：NuGet 預檢 `ready`，完整 workflow
+  `pass`，32/32 測試通過，Line 35/35、Branch 14/14。CLI 派遣使用兩個具名角色，runtime
+  用量已收尾；主代理、Author、Verifier 均記錄為 `gpt-6-sol`／`medium`，整體用量
+  963,642 tokens（含快取）。
+
 ## [v1.1.3] - 2026-09-10
 
 ### 新增

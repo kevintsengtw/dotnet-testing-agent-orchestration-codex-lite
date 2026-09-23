@@ -30,9 +30,26 @@ build、test、coverage或重建workflow結果。
   阻斷topology。Hard gate只接受deterministic機制能獨立驗證的邊界。
 - Skills只是agents按需使用的技術來源，不是固定routing、必載清單或採用自述gate。
 
+## NuGet 沙箱預檢
+
+取得三個必要輸入後，在建立本次 `.orchestrator/` 狀態或派遣 Author 前，先於目前 Codex
+沙箱執行：
+
+```powershell
+node .codex/scripts/dotnet-testing-codex-lite/nuget-sandbox-preflight.mjs `
+  --workspace-root . `
+  --target-source <targetSourcePath> `
+  --test-project <testProjectPath>
+```
+
+測試專案已存在時還原該專案；尚未建立時預檢 target 所在路徑最近且唯一的來源專案。
+只有 stdout `status=ready` 才啟動 driver。非零 exit code 時停止，回報 stderr 的 blocker
+與處理建議；不建立 run、不派遣 agent，也不改用 Full Access 重跑。預檢只證明當下指定
+專案可還原，不能保證 Author 後續新增的套件已在快取中。
+
 ## Driver介面
 
-Main只使用以下兩個公開介面：
+通過上述預檢後，Main只使用以下兩個 driver 公開介面：
 
 ```powershell
 node .codex/scripts/dotnet-testing-codex-lite/workflow.mjs start `
@@ -49,19 +66,26 @@ node .codex/scripts/dotnet-testing-codex-lite/workflow.mjs advance `
 `advance`；driver command失敗時回報其compact error並停止，不自行修補state或改判結果。
 
 Driver擁有唯一run namespace、test-project active lock、production／test hash lifecycle、
-phase artifacts與terminal result。Main不直接呼叫leaf scripts，也不預先清除tests或run evidence。
+phase artifacts與terminal result。除上述預檢外，Main不直接呼叫leaf scripts，也不預先清除
+tests或run evidence。
 
 ## Action調度
 
 依action type執行：
 
-1. `dispatch_author`：以完整payload、`fork_turns: "none"`啟動
+1. `dispatch_author`：以完整payload、`fork_turns: "none"`、
+   `agent_type: "dotnet-testing-lite-unit-author"` 啟動
    `.codex/agents/dotnet-testing-lite-unit-author.toml`。
-2. `dispatch_verifier`：以完整payload、`fork_turns: "none"`啟動
+2. `dispatch_verifier`：以完整payload、`fork_turns: "none"`、
+   `agent_type: "dotnet-testing-lite-unit-verifier"` 啟動
    `.codex/agents/dotnet-testing-lite-unit-verifier.toml`。
 3. `dispatch_author_repair`：只對原Author送出follow-up。
 4. `dispatch_verifier_final`：只對原Verifier送出follow-up。
 5. `terminal`：停止action loop並交付driver結果。
+
+派遣 Author／Verifier 時必須使用上述具名 `agent_type`，由角色 TOML 提供模型與推理強度；
+不得改用 `default`，也不得在派遣參數中覆蓋 `model` 或 `reasoning_effort`。若工具無法使用
+具名角色，停止並回報阻礙，不以其他模型完成本次 workflow。
 
 每個dispatch action提供`payloadPath`，內容是driver已保存的完整payload。Main以raw text讀取
 該檔，將讀取結果直接作為spawn／follow-up的message；不得從畫面重新抄寫payload、逐欄建立

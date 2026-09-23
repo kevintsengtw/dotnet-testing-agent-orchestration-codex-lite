@@ -11,6 +11,14 @@
 Codex Lite 專屬入口位於
 `.codex/skills/dotnet-testing-lite-orchestrator-unit/SKILL.md`。
 
+從目標工作區啟動 Codex CLI。若目前 shell 不在該目錄，使用 `-C` 明確指定工作區；
+啟動後先確認目前目錄與上述技能檔都位於指定工作區，不要自行改用其他工作區。
+以下為 PowerShell 範例，請替換為實際絕對路徑：
+
+```powershell
+codex -C 'C:\path\to\workspace'
+```
+
 ```text
 呼叫 $dotnet-testing-lite-orchestrator-unit。
 target source: src/MyProject/PriceCalculator.cs
@@ -26,6 +34,19 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 既有 target framework、中央套件版本與 project reference；不需要使用者先建立
 空白 csproj。
 
+Lite Orchestrator 在建立 run 前，會用目前 Codex 沙箱的快取與套件來源預檢 `dotnet restore`。
+既有 test csproj 優先；尚未建立時預檢 target 對應的來源專案。若還原失敗，會回報阻礙與
+處理建議並停止派遣，不留下本次 run。來源專案預檢通過不保證後續新增的測試套件已有快取。
+若本機已有套件而沙箱仍回報 `NU1101`／`NU1801`，可重新啟動 Codex CLI，使用單次啟動
+參數指向目前沙箱可讀的 NuGet 快取。以下同樣是 PowerShell 範例，請替換兩個絕對路徑：
+
+```powershell
+codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES="C:/path/to/.nuget/packages"'
+```
+
+此設定不修改使用者層設定或開啟完整存取權。回到指定工作區後，從預檢開始重新執行
+完整 workflow；預檢通過不保證後續新增的測試套件已有快取。
+
 ## 直接執行 coverage runner
 
 在已部署 `.codex/` 與 `.codex/skills/` 的專案根目錄，依
@@ -36,9 +57,8 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 `.codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs`。
 每次使用新的 output 路徑，runner 會保留 TRX、Cobertura 與 production integrity 結果。
 
-v1.1.1 修正了 v1.1.0 Skill 的入口參照。升級須更新完整 Lite 部署資產；
-固定 archive 的下游整合應等待新的 stable Release，記錄新 exact commit 與
-該 archive 的 SHA-256。既有 v1.1.0 tag 保持不變。
+升級 v1.2.0 須更新完整 Lite 部署資產；若下游整合固定使用 Release archive，
+應記錄新 Release 的 exact commit 與 archive SHA-256。舊版 tag 保持不變。
 
 ## 結果
 
@@ -91,6 +111,24 @@ Author-result gate 會直接解析 `testFilePaths` 內的 `[Fact]`／`[Theory]`�
 3. 展開「選用：依 Standard 官方費率換算 credit」，查看 runtime 記錄的模型、推理強度與服務模式，再按「按 Standard 模式換算」。頁面會顯示各代理的公式與 workflow 合計。
 
 Credit 使用網頁標示查核日期的費率版本；它是參考試算，不代表帳戶實際扣抵。服務模式缺漏時按 Standard 前提試算並明示缺漏，不把未知模式當成已確認；資料不足或未完成時不提供完整 credit 合計。
+
+### v1.2.0 完整流程驗證
+
+2026-09-23 在 Windows Codex CLI、指定的 Lab 工作區，對 `TemperatureConverter` 執行
+run `20260923070820-TemperatureConverter-52fa36b7`：NuGet 沙箱預檢為 `ready`，driver
+最終判定 `pass`，32/32 測試通過，Line 35/35、Branch 14/14。CLI 派遣使用具名 Author、
+Verifier 角色；runtime 用量收尾後，主代理及兩個子代理均記錄為 `gpt-6-sol`／`medium`。
+
+| 代理 | 未快取輸入 | 快取輸入 | 輸出 | 總 tokens（含快取） | 請求數 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 主代理 | 35,708 | 456,448 | 3,788 | 495,944 | 17 |
+| Author | 24,225 | 170,112 | 2,786 | 197,123 | 7 |
+| Verifier | 20,497 | 248,064 | 2,014 | 270,575 | 9 |
+| 整個 workflow | 80,430 | 874,624 | 8,588 | 963,642 | 33 |
+
+用量網頁依 2026-09-23 保存的 GPT-6 Sol Standard 費率（每百萬未快取輸入／快取輸入／輸出
+為 50／5／250 credits）試算 **10.54162 credits**。服務模式未記錄，因此這只是 Standard
+前提試算，不是帳戶實際扣抵。下方截圖屬 2026-09-08 的歷史 GPT-5.6 Sol 驗收。
 
 2026-09-08 Windows CLI 驗收的既有完成結果如下，並非重新執行或示意數據：
 

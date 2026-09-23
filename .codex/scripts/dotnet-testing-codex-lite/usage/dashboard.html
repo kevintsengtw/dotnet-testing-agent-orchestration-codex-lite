@@ -10,7 +10,7 @@
 <p><small>總量 = 未快取輸入 + 快取輸入 + 輸出。推理用量已包含在輸出，不重複加總。這是 runtime 觀測快照，不是帳單。CLI 的退出摘要只列主代理，且 total 不含另外列出的 cached；不可直接與整個 workflow 總量比較。</small></p>
 <details id="credit-panel"><summary>選用：依 Standard 官方費率換算 credit</summary>
 <p>適用於 ChatGPT token-based credits；API key 與舊制企業方案不適用。結果為公開費率換算，不代表帳戶實際扣抵。</p>
-<p>官方費率查核日期：2026-09-07。<a href="https://learn.chatgpt.com/docs/pricing">官方費率</a>。本頁保留此版本費率。Sol 促銷費率官方註明至少適用至 2026-11-21。</p>
+<p>官方費率查核日期：2026-09-23。<a href="https://learn.chatgpt.com/docs/pricing">官方費率</a>。本頁保留此版本費率。GPT-5.6 Sol 促銷費率官方註明至少適用至 2026-11-21。</p>
 <p>公式：credits =（未快取輸入 × 輸入費率 + 快取輸入 × 快取費率 + 輸出 × 輸出費率）÷ 1,000,000。推理強度不另乘倍率。</p>
 <div id="credit-settings"></div><button id="credit-standard">按 Standard 模式換算</button>
 <p>服務模式缺漏時，結果會明確標示為 Standard 前提試算，不把缺值改寫成已記錄的 Standard。</p>
@@ -19,7 +19,7 @@
 <p id="updated"></p></main>
 <script>
 let timer, latestGroups=[], creditActive=false;
-const officialRates={'gpt-6-astra':[250,25,1250],'gpt-5.6-sol':[100,10,500],'gpt-5.6-terra':[50,5,300],'gpt-5.6-luna':[5,0.5,30],'gpt-5.5':[125,12.5,750],'gpt-5.4':[62.5,6.25,375],'gpt-5.4-mini':[18.75,1.875,113]};
+const officialRates={'gpt-6-astra':[250,25,1250],'gpt-6-sol':[50,5,250],'gpt-6-luna':[2.5,0.25,12.5],'gpt-5.6-sol':[100,10,500],'gpt-5.6-terra':[50,5,300],'gpt-5.6-luna':[5,0.5,30],'gpt-5.5':[125,12.5,750],'gpt-5.4':[62.5,6.25,375],'gpt-5.4-mini':[18.75,1.875,113]};
 const el=id=>document.getElementById('credit-'+id);
 const ratesFor=model=>Object.hasOwn(officialRates,model)?officialRates[model]:null;
 function quoteCredit(row){
