@@ -17,6 +17,9 @@ Main
 
 NuGet 預檢在目前 Codex 沙箱先檢查既有 test project，若尚未建立則檢查 target 對應的
 來源專案；預檢受阻時不建立 run 或派遣代理。
+未設定 `NUGET_PACKAGES` 時直接還原，沿用 `NuGet.Config` 或預設快取；有明確設定時才
+檢查並使用指定快取。缺少此變數不會阻擋；失敗建議依實際診斷提供，CLI override 僅為
+特定快取情況的選用處理。預檢與部署不修改使用者層設定、不自動放寬網路或權限。
 Driver 是 lifecycle 的唯一狀態真相，負責唯一 run identity、
 `.orchestrator/runs/<run-id>/<target>/` 路徑、同 test project active lock、phase 順序、
 deterministic gates、一次 repair 額度、結果投影。Main 只傳遞完整

@@ -2,7 +2,6 @@
 name: dotnet-testing-unit-test-fundamentals-lite
 description: |
   .NET 單元測試基礎與 FIRST 原則的專門技能。當需要建立單元測試、了解測試基礎、學習 3A Pattern、掌握測試最佳實踐時使用。涵蓋 FIRST 原則、AAA Pattern、Fact/Theory、測試金字塔等。
-  Make sure to use this skill whenever the user mentions unit testing fundamentals, FIRST principles, AAA/3A pattern, or wants to learn how to write basic .NET tests, even if they don't explicitly ask for fundamentals guidance.
   Keywords: unit test, 單元測試, unit testing, test fundamentals, 測試基礎, FIRST principle, FIRST 原則, 3A pattern, AAA pattern, Arrange Act Assert, Fact, Theory, InlineData, 如何寫測試, testing best practices, 建立單元測試
 ---
 
@@ -284,6 +283,11 @@ Solution/
 - 涵蓋正常路徑、邊界條件、無效輸入、例外情況
 
 ## 參考資源
+
+### 範例檔案
+
+- [templates/basic-test-template.cs](templates/basic-test-template.cs) - 基本單元測試範本，遵循 FIRST 原則與 3A Pattern
+- [templates/parameterized-test-template.cs](templates/parameterized-test-template.cs) - 參數化測試範本，以 `[Theory]` 與 `[InlineData]` 涵蓋多組案例
 
 ### 原始文章
 

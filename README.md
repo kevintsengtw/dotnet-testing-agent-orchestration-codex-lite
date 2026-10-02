@@ -15,7 +15,13 @@ Lite driver 不產生 token 估算，也不把用量數字寫入 machine result�
 
 操作步驟、已驗收的用量範例及保存方式見[用量網頁與 credit 試算](docs/usage.md#用量網頁與-credit-試算)。
 
-v1.2.0 的 Windows Codex CLI 完整驗證中，NuGet 預檢回傳 `ready`，32/32 測試通過，
+v1.2.1 的 Windows Codex CLI 完整驗證中，NuGet 預檢回傳 `ready`、`packages: null`，
+32/32 測試通過，Line 39/39、Branch 22/22（皆 100%）。主代理、Author 與 Verifier 均為
+`gpt-6-sol`／`medium`；整個 workflow 用量 1,298,262 tokens（含快取）、39 requests。
+保留 `NU1900` 弱點資料查詢警告。詳細條件與用量範圍見
+[使用說明](docs/usage.md#v121-windows-完整流程驗證)。
+
+以下 v1.2.0 的 Windows Codex CLI 完整驗證為歷史紀錄：NuGet 預檢回傳 `ready`，32/32 測試通過，
 Line／Branch coverage 均為 100%。主代理、Author 與 Verifier 的 runtime 模型均為
 `gpt-6-sol`／`medium`；用量 963,642 tokens（含快取），依頁面保存費率的 Standard
 前提試算為 10.54162 credits，非帳戶實際扣抵。完整條件見[使用說明](docs/usage.md#v120-完整流程驗證)。
@@ -68,8 +74,11 @@ scaffold。
 
 Orchestrator 在建立 run 前，先於目前 Codex 沙箱對既有 test project 執行 NuGet 還原預檢；
 若 test project 尚未建立，改預檢 target 對應的來源專案。只有預檢回傳 `ready` 才啟動 driver
-與派遣具名 Author、Verifier。還原受阻時會回報原因並停止；若本機已有套件但沙箱無法取得，
-可於啟動 CLI 時指定可讀的 `NUGET_PACKAGES` 快取。指令與限制見[使用說明](docs/usage.md#prompt)。
+與派遣具名 Author、Verifier。一般啟動不需要設定 `NUGET_PACKAGES` 或為 NuGet 修改
+`.codex/config.toml`；未設定時沿用 `NuGet.Config` 與預設快取，明確設定時才檢查並使用
+指定快取。還原受阻時會保留診斷並停止，先依錯誤檢查套件來源、快取或存取問題。
+只有確認所需套件位於另一個可讀快取、且目前環境未使用時，才考慮選用 CLI override。
+指令與限制見[使用說明](docs/usage.md#prompt)。
 
 每次 workflow 的測試與用量證據會保存在 test project 的 `.orchestrator/runs/`，不會自動清除。
 Windows、macOS 與 Linux 可使用相同的 Node.js CLI 預覽並清理已完成 run；未加 `--apply`
@@ -105,7 +114,7 @@ workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
 ## 獨立部署與升級
 
-v1.2.0 的變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。
+目前版本為 v1.2.1，變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。上方 v1.2.0 數據為歷史驗收。
 
 本次 runtime 使用 `.codex/scripts/dotnet-testing-codex-lite/`，13 個技術技能使用
 `.codex/skills/*-lite/`；不依賴 Full 部署資產。安裝範圍為工作區，不建立全域安裝。

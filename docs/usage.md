@@ -37,15 +37,29 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 Lite Orchestrator 在建立 run 前，會用目前 Codex 沙箱的快取與套件來源預檢 `dotnet restore`。
 既有 test csproj 優先；尚未建立時預檢 target 對應的來源專案。若還原失敗，會回報阻礙與
 處理建議並停止派遣，不留下本次 run。來源專案預檢通過不保證後續新增的測試套件已有快取。
-若本機已有套件而沙箱仍回報 `NU1101`／`NU1801`，可重新啟動 Codex CLI，使用單次啟動
-參數指向目前沙箱可讀的 NuGet 快取。以下同樣是 PowerShell 範例，請替換兩個絕對路徑：
+一般啟動不需要設定 `NUGET_PACKAGES`，也不需要為 NuGet 手動修改 `.codex/config.toml`。
+未設定時預檢直接執行 `dotnet restore`，不傳 `--packages`，沿用既有 `NuGet.Config`、
+`globalPackagesFolder` 或 NuGet 預設快取。若已明確設定 `NUGET_PACKAGES`，預檢會檢查該值
+是否為存在且可讀的絕對目錄，再使用指定快取；不覆寫使用者設定。
+
+還原失敗時先查看回傳的原始診斷與處理建議：
+
+- `NU1301`／`NU1801`：檢查錯誤指出的套件來源、連線、代理伺服器、憑證與來源驗證；
+  錯誤代碼本身不能判定是網路或權限問題。
+- `NU1101`／`NU1102`：核對套件識別碼、版本、套件來源、`packageSourceMapping` 與快取內容。
+- 存取拒絕：依原始錯誤核對來源、快取或專案輸出路徑的存取權限。
+- SDK、專案或其他錯誤：依原始診斷處理，不先加入快取 override。
+
+只有確認所需套件已在另一個可讀快取、且目前環境未使用該快取時，才可選用單次 CLI
+參數。以下為 PowerShell 範例，請替換兩個絕對路徑；這不是一般啟動的前置步驟：
 
 ```powershell
 codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES="C:/path/to/.nuget/packages"'
 ```
 
-此設定不修改使用者層設定或開啟完整存取權。回到指定工作區後，從預檢開始重新執行
-完整 workflow；預檢通過不保證後續新增的測試套件已有快取。
+預檢及部署不會自動加入 NuGet override、修改使用者層設定、開啟網路或放寬權限。
+依組織允許的方式處理問題後，回到指定工作區，從預檢開始重新執行完整 workflow；
+預檢通過不保證後續新增的測試套件已有快取。
 
 ## 直接執行 coverage runner
 
@@ -57,7 +71,7 @@ codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES=
 `.codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs`。
 每次使用新的 output 路徑，runner 會保留 TRX、Cobertura 與 production integrity 結果。
 
-升級 v1.2.0 須更新完整 Lite 部署資產；若下游整合固定使用 Release archive，
+升級 v1.2.1 須更新完整 Lite 部署資產；若下游整合固定使用 Release archive，
 應記錄新 Release 的 exact commit 與 archive SHA-256。舊版 tag 保持不變。
 
 ## 結果
@@ -111,6 +125,37 @@ Author-result gate 會直接解析 `testFilePaths` 內的 `[Fact]`／`[Theory]`�
 3. 展開「選用：依 Standard 官方費率換算 credit」，查看 runtime 記錄的模型、推理強度與服務模式，再按「按 Standard 模式換算」。頁面會顯示各代理的公式與 workflow 合計。
 
 Credit 使用網頁標示查核日期的費率版本；它是參考試算，不代表帳戶實際扣抵。服務模式缺漏時按 Standard 前提試算並明示缺漏，不把未知模式當成已確認；資料不足或未完成時不提供完整 credit 合計。
+
+### v1.2.1 Windows 完整流程驗證
+
+2026-10-02 在獨立 Windows 工作區，以 Codex CLI 0.160.0 對 net10.0 的
+`Practice.Core.Net10.TemperatureConverter` 執行 run
+`20261002061822-TemperatureConverter-5358f9d7`。準備的啟動指令不含 NuGet override；
+原始 session 中預檢回傳 `ready`、`packages: null`、`restoreExitCode: 0`，工作區設定
+SHA-256 保持不變。Session 未記錄完整啟動 argv，不能額外宣稱已由 argv 排除所有覆寫來源。
+
+完整 Author → Verifier 初次流程為 `completed/pass`，未使用 repair。直接解析 TRX 為
+32/32 通過、0 失敗／略過；Cobertura Line 39/39、Branch 22/22（皆 100%）。Production
+與 Verifier test integrity 通過。Build 記錄 6 筆 `NU1900` 弱點資料查詢警告；build/test
+exit 0，runner incidents 為空。本節描述本次 Windows 人工驗證；三平台 CI 另由發布 PR
+的 Lite PR checks 執行，結果以對應 GitHub Actions 紀錄為準。
+
+主代理及兩個子代理的原始 session 均記錄 `gpt-6-sol`／`medium`；用量狀態為
+`observed-complete`，連續三次觀測一致。
+
+| 代理 | 未快取輸入 | 快取輸入 | 輸出 | 總 tokens（含快取） | 請求數 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 主代理 | 38,486 | 487,808 | 4,505 | 530,799 | 17 |
+| Author | 48,850 | 460,800 | 6,254 | 515,904 | 14 |
+| Verifier | 20,282 | 228,864 | 2,413 | 251,559 | 8 |
+| 整個 workflow | 107,618 | 1,177,472 | 13,172 | 1,298,262 | 39 |
+
+CLI 退出摘要的 `total=42,991` 是主代理未快取輸入加輸出；加上另列的
+`cached=487,808` 為 530,799，與網頁的主代理列一致。推理用量已包含在輸出，不再加總。
+網頁依 2026-09-23 保存的 GPT-6 Sol 費率（每百萬未快取輸入／快取輸入／輸出為
+50／5／250 credits）按 Standard 前提試算 **14.56126 credits**；服務模式未記錄，
+這不是帳戶實際扣抵或目前費率的重新查核。本輪不是受控模型比較，不能將用量差異
+單獨歸因於模型版本。
 
 ### v1.2.0 完整流程驗證
 

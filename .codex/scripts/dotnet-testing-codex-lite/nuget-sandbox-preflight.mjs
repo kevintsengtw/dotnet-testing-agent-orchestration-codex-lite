@@ -6,14 +6,45 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const remediation = [
-  "確認目前 Codex 沙箱能讀取 NuGet 套件快取；可在啟動 CLI 時用 -c shell_environment_policy.set.NUGET_PACKAGES 指向此機器可讀的絕對快取路徑。",
-  "若快取缺少套件，依組織政策設定可用的 NuGet 套件來源或允許此工作區的網路存取，再重新執行預檢。",
-  "不要改用 Full Access 重跑，也不要為此修改使用者層的 Codex 設定。",
-];
+function remediationFor(kind, details) {
+  switch (kind) {
+    case "project-outside-workspace":
+      return ["確認 workspace root、target source 與 test project 路徑；兩個專案路徑都必須位於目前工作區。"];
+    case "target-source-unavailable":
+      return ["確認 target source 是目前工作區內存在且可讀的檔案。"];
+    case "restore-project-unavailable":
+      return ["確認既有 test csproj，或 target 所在路徑最近的來源專案；同一目錄有多個 csproj 時，請明確提供既有 test project。"];
+    case "nuget-cache-unavailable":
+      return ["檢查已明確設定的 NUGET_PACKAGES：必須是存在且目前執行環境可讀的絕對目錄。",
+        "若不需要指定快取，可移除自己設定的 override，沿用 NuGet.Config 與 NuGet 預設快取；一般啟動不需要此變數。"];
+    case "dotnet-unavailable":
+      return ["依原始執行錯誤檢查 .NET SDK、PATH 或還原逾時問題，再重新執行預檢。"];
+    case "nuget-restore-unavailable": {
+      const output = details.output ?? "";
+      const advice = [];
+      if (/\bNU(?:1301|1801)\b/i.test(output)) {
+        advice.push("套件來源存取失敗：依原始診斷檢查 NuGet.Config 的來源，以及連線、代理伺服器、憑證或來源驗證；錯誤代碼本身不能判定是哪一項原因。");
+      }
+      if (/\bNU(?:1101|1102)\b/i.test(output)) {
+        advice.push("找不到所需套件或版本：核對套件識別碼、版本、NuGet.Config 的套件來源與 packageSourceMapping，以及既有快取是否包含所需套件。");
+      }
+      if (/EACCES|EPERM|access (?:is )?denied|unauthorizedaccess|permission denied|存取.*拒絕|拒絕存取/i.test(output)) {
+        advice.push("診斷包含存取拒絕：核對錯誤指出的來源、快取或專案輸出路徑及目前執行環境的存取權限。");
+      }
+      if (advice.length === 0) {
+        advice.push("先依原始 dotnet restore 診斷檢查專案、SDK、套件來源或快取；目前資訊不足以判定原因，不應先加入 NuGet override。");
+      } else if (/\bNU(?:1301|1801|1101|1102)\b/i.test(output)) {
+        advice.push("選用處理：只有確認所需套件已在另一個可讀快取、且目前環境未使用該快取時，才考慮用單次 CLI -c shell_environment_policy.set.NUGET_PACKAGES 指定其絕對路徑。");
+      }
+      return [...advice, "預檢不會修改使用者層設定、開啟網路或放寬權限；依組織允許的方式處理後，再從預檢重新執行。"];
+    }
+    default:
+      return ["依原始錯誤核對預檢參數、工作區與檔案存取狀態，再重新執行。"];
+  }
+}
 
 function blocked(kind, message, details = {}) {
-  return { status: "blocked", kind, message, remediation, ...details };
+  return { status: "blocked", kind, message, remediation: remediationFor(kind, details), ...details };
 }
 
 function inside(root, candidate) {
@@ -60,7 +91,7 @@ export function checkNugetSandbox({ workspaceRoot, targetSource, testProject },
       if (!path.isAbsolute(packages) || !fs.statSync(packages).isDirectory()) throw Error("快取目錄無效");
       fs.accessSync(packages, fs.constants.R_OK);
     } catch (error) {
-      return blocked("nuget-cache-unavailable", "NUGET_PACKAGES 在目前沙箱中無法讀取。", {
+      return blocked("nuget-cache-unavailable", "指定的 NUGET_PACKAGES 不是存在且可讀的絕對目錄。", {
         packages, error: error.message,
       });
     }

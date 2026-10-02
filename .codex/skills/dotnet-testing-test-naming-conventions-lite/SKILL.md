@@ -2,15 +2,10 @@
 name: dotnet-testing-test-naming-conventions-lite
 description: |
   測試命名規範與最佳實踐的專門技能。當需要為測試方法命名、改進測試可讀性、建立命名標準時使用。涵蓋三段式命名法、中文命名建議、測試類別命名等。
-  Make sure to use this skill whenever the user mentions test naming, how to name tests, test readability, or test method naming conventions, even if they don't explicitly ask for naming guidance.
   Keywords: test naming, 測試命名, naming conventions, 命名規範, 三段式命名, three-part naming, method_scenario_expected, 方法_情境_預期, 如何命名測試, 測試可讀性, test readability, 命名最佳實踐, 測試報告, test documentation
 ---
 
 # .NET 測試命名規範指南
-
-需要更多好／壞名稱對照時，讀
-[`references/naming-examples.md`](references/naming-examples.md)；需要可複用 C# 範本時，讀
-[`templates/naming-convention-examples.cs`](templates/naming-convention-examples.cs)。
 
 ## 測試方法命名規範
 
@@ -271,6 +266,7 @@ PASS EmailHelperTests
 請參考同目錄下的範例檔案：
 
 - [templates/naming-convention-examples.cs](templates/naming-convention-examples.cs) - 命名規範完整範例
+- [references/naming-examples.md](references/naming-examples.md) - 依測試情境分類的命名範例集，可直接複製套用
 
 ### 原始文章
 

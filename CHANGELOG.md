@@ -4,6 +4,44 @@
 
 ## [Unreleased]
 
+## [v1.2.1] - 2026-10-02
+
+### 調整
+
+- NuGet 預檢依專案路徑、SDK、套件來源、套件不足及存取診斷提供處理建議；
+  不再對所有失敗優先建議 CLI 快取 override，並保留原始還原診斷。
+- 一般啟動不需要 `NUGET_PACKAGES`，也不需要為 NuGet 修改 `.codex/config.toml`。
+  保留既有選用快取行為：未設定時沿用 NuGet 設定與預設快取，明確設定時檢查並使用
+  指定目錄；實際還原失敗仍在建立 run 與派遣 Author／Verifier 前停止。
+- 補上隔離本機套件來源的實際 restore 回歸及部署設定保留檢查；發布測試環境明確
+  安裝 .NET 10 SDK。部署不注入 NuGet override、不修改使用者層設定或放寬網路與權限。
+- 移除三個 Lite 技能副本中 26 個空白行的縮排，修正 public 推送前的行尾空白阻礙；
+  不修改上游唯讀鏡像。回歸測試將完整 Lite Skill 內容送入 Git 空白檢查，避免只檢查
+  本次差異而漏掉承接的技能更新。
+
+### 驗證範圍
+
+- Windows 本機的預檢、部署、公開快照與兩角色契約局部測試 39/39 通過；
+  `node scripts/run-validation.mjs` 完整 Node 回歸 199/199 通過，0 skipped。
+  環境為 Node v26.10.0、.NET SDK 10.0.401。
+- 發布格式修正前，新增回歸重現 Lite Skill 行尾空白失敗；修正後公開快照與 runtime
+  參照局部測試 13/13 通過、0 skipped。第一次發布在 public 推送前停止，未建立 Release；
+  後續仍經既定同步 workflow 發布。
+- 隔離本機來源的實際 restore 驗證預設快取、`NuGet.Config` 指定快取、明確 override
+  優先順序與套件檔案落點；缺少套件時保留 `NU1101` 診斷並非零退出。
+  快取讀取拒絕另以模擬 `EACCES` 驗證，不宣稱已完成跨平台 ACL 實測。
+- Windows Codex CLI 0.160.0 人工驗證完成（run
+  `20261002061822-TemperatureConverter-5358f9d7`）：原始預檢為 `ready`、`packages: null`、
+  restore exit 0；Author → Verifier 初次流程 `completed/pass`，未使用 repair。
+  TRX 32/32 通過、0 失敗／略過；Cobertura Line 39/39、Branch 22/22（皆 100%）。
+  Production 與 Verifier test integrity 通過，預檢 runtime 與工作區設定保持準備時的內容。
+- 主代理、Author、Verifier 原始 session 均為 `gpt-6-sol`／`medium`；用量已收尾，
+  整個 workflow 合計 1,298,262 tokens（含快取）、39 requests。CLI 退出的 42,991
+  不含另列的 487,808 cached，僅為主代理；不視為整個 workflow 用量或受控模型比較。
+- 保留 6 筆 `NU1900` build warning（無法取得套件弱點資料）；build/test exit 0、runner
+  incidents 為空。原始 session 未記錄完整啟動 argv，不補造此項證據。
+  三平台 CI 由發布 PR 的 Lite PR checks 執行，結果以對應 GitHub Actions 紀錄為準。
+
 ## [v1.2.0] - 2026-09-23
 
 ### 新增
