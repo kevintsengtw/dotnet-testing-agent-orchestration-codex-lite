@@ -13,7 +13,15 @@ Lite driver 不產生 token 估算，也不把用量數字寫入 machine result�
 
 展開網頁的「選用：依 Standard 官方費率換算 credit」，再按「按 Standard 模式換算」，即可查看各代理與合計試算。頁面同時列出模型、推理強度、服務模式、保存的費率版本與計算公式。**這是依 Standard 前提換算的參考值，不是帳戶實際扣抵；服務模式未記錄時仍會明示未知。**
 
+v1.2.2 加入 `gpt-6.1-sol`：依 2026-10-07 查核的官方 Standard 費率，每百萬未快取
+輸入／快取輸入／輸出為 50／2.5／250 credits；既有 GPT-6 Sol、Luna、Astra 換算保留。
+
 操作步驟、已驗收的用量範例及保存方式見[用量網頁與 credit 試算](docs/usage.md#用量網頁與-credit-試算)。
+
+v1.2.2 的 Windows Codex CLI 完整驗證中，net10 `SubscriptionService` 54/54 測試通過，
+Line／Branch 皆 100%，主代理、Author、Verifier 均為 `gpt-6.1-sol`／`medium`。
+實際用量報表的 Standard 前提 credit 合計 11.77946，與獨立重算一致；服務模式未記錄。
+詳細情境與限制見[修正後人工驗證](docs/usage.md#v122-修正後-windows-人工驗證)。
 
 v1.2.1 的 Windows Codex CLI 完整驗證中，NuGet 預檢回傳 `ready`、`packages: null`，
 32/32 測試通過，Line 39/39、Branch 22/22（皆 100%）。主代理、Author 與 Verifier 均為
@@ -114,7 +122,8 @@ workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
 ## 獨立部署與升級
 
-目前版本為 v1.2.1，變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。上方 v1.2.0 數據為歷史驗收。
+目前版本為 v1.2.2，新增 GPT-6.1 Sol credit 換算並修正派遣前的交付目錄準備，
+變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。上方 v1.2.0 數據為歷史驗收。
 
 本次 runtime 使用 `.codex/scripts/dotnet-testing-codex-lite/`，13 個技術技能使用
 `.codex/skills/*-lite/`；不依賴 Full 部署資產。安裝範圍為工作區，不建立全域安裝。

@@ -4,6 +4,61 @@
 
 ## [Unreleased]
 
+## [v1.2.2] - 2026-10-07
+
+### 新增
+
+- 用量網頁加入 `gpt-6.1-sol` 的 Standard credit 換算；每百萬 tokens 的未快取輸入、
+  快取輸入與輸出費率分別為 50、2.5、250 credits，依 2026-10-07 官方費率查核。
+- 網頁分別標示 GPT-6.1 Sol 的查核日期與其他模型保留的費率版本。
+
+### 修正
+
+- Driver 在派遣 Author／Verifier 前建立指定結果檔與停止回報檔的父目錄，
+  避免代理交付時才需要建立目錄。保留既有寫入保護、停止回報與缺漏結果檔判定。
+
+### 驗證
+
+- 發布前 Windows 完整 Node 回歸 200/200 通過、0 skipped；獨立 public 快照的
+  net10 coverage smoke 22/22 通過，Line／Branch 皆 100%，production integrity 通過。
+  公開 README 更正為 v1.2.2；文件更新後部署、快照與 runtime 參照檢查 20/20 通過。
+- 用量收集與網頁換算相關 Node 測試 22/22 通過；補上 GPT-6.1 Sol 的各類 token 費率、
+  混合用量換算、服務模式缺漏及非 Standard 模式拒絕檢查，並補上 Astra 的換算檢查。
+- Windows Codex CLI 第一項人工驗證完成：net10 `TemperatureConverter` 正式 Lite workflow
+  32/32 測試通過，Line 39/39、Branch 22/22；主代理記錄為 `gpt-6.1-sol`，
+  Author／Verifier 為 `gpt-6-sol`，三者皆為 `medium`。實際用量報表的 Standard 前提
+  credit 試算合計 16.37164，與獨立重算一致；三者服務模式未記錄，保留此換算前提。
+  保留 6 筆 `NU1900` 警告；詳細用量、證據位置與驗證限制見 `docs/usage.md`。
+- 第二項 `WeatherAlertService` 人工驗證的主代理與 Author 均記錄為 `gpt-6.1-sol`；
+  workflow 因 Author 正式結果檔缺漏而以 `contract/fail` 結束，未派遣 Verifier。
+  用量仍完整收尾，失敗結果正確顯示；兩組 Standard 前提 credit 試算合計 9.13668，
+  與獨立重算一致。本輪未涵蓋 Verifier，不將此失敗 run 列為完整 workflow 通過。
+- 原始 Author session 確認結果檔與停止回報檔的寫入均因無法建立父目錄失敗；
+  補上派遣前目錄準備的回歸，修正前兩項檢查皆重現失敗。修正後 Driver、用量與角色
+  契約相關 Node 測試 39/39 通過。
+- 修正後以 net10 `SubscriptionService` 完成人工驗證（run
+  `20261007065004-SubscriptionService-d75356fe`）：Author／Verifier 正常交付，workflow
+  `completed/pass`，54/54 測試通過，Line 76/76、Branch 40/40，未使用 repair；
+  production／test integrity 通過，0 build warnings、0 workflow incidents。
+  主代理與兩個子代理均記錄為 `gpt-6.1-sol`／`medium`，32 requests、995,118 tokens
+  （含快取）；Standard 前提 credit 試算合計 11.77946 與獨立重算及使用者截圖一致。
+  三者服務模式仍未記錄，不宣稱帳戶實際扣抵；本輪補足 Verifier 的新模型換算驗證。
+- 擴充人工驗證至 net10 `OrderValidator`：Author／Verifier 正常交付，54/54 測試通過，
+  品質與完整性通過；Line 34/35、Branch 1/2，未覆蓋項目有公開入口不可達的證據，
+  workflow 為 `completed/best_effort`，不列為 `pass`。三個代理均為
+  `gpt-6.1-sol`／`medium`；實際報表 credit 合計 12.68613 與獨立重算一致，
+  服務模式未記錄，保留 Standard 前提。另保留 6 筆 `NU1900` 警告。
+- net10 `OrderProcessingService` 完成一輪測試品質 repair：補足非同步等待與失敗傳遞
+  案例後，workflow 為 `completed/pass`，56/56 測試通過，Line 79/79、Branch 44/44；
+  品質與完整性通過。三個代理均為 `gpt-6.1-sol`／`medium`，包含 repair 的用量
+  收尾完整；Standard 前提 credit 合計 19.29219 與獨立重算及截圖一致。
+  保留 6 筆 `NU1900` 警告及 Author 的 NuGet 網路異常回報，詳見 `docs/usage.md`。
+- net10 `ConfigurationLoader` 人工驗證完成：Author／Verifier 正常交付，55/55 測試
+  通過，Line 96/96、Branch 49/50；剩餘分支因前置篩選而不可由公開入口觸發，
+  workflow 為 `completed/best_effort`，品質與完整性通過，未使用 repair。
+  三個代理均為 `gpt-6.1-sol`／`medium`，Standard 前提 credit 合計 15.70513
+  與實際 HTML、截圖及獨立重算一致；保留 6 筆 `NU1900` 警告與 Author 異常回報。
+
 ## [v1.2.1] - 2026-10-02
 
 ### 調整

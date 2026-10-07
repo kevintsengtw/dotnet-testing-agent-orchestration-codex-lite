@@ -71,7 +71,7 @@ codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES=
 `.codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs`。
 每次使用新的 output 路徑，runner 會保留 TRX、Cobertura 與 production integrity 結果。
 
-升級 v1.2.1 須更新完整 Lite 部署資產；若下游整合固定使用 Release archive，
+升級 v1.2.2 須更新完整 Lite 部署資產；若下游整合固定使用 Release archive，
 應記錄新 Release 的 exact commit 與 archive SHA-256。舊版 tag 保持不變。
 
 ## 結果
@@ -125,6 +125,256 @@ Author-result gate 會直接解析 `testFilePaths` 內的 `[Fact]`／`[Theory]`�
 3. 展開「選用：依 Standard 官方費率換算 credit」，查看 runtime 記錄的模型、推理強度與服務模式，再按「按 Standard 模式換算」。頁面會顯示各代理的公式與 workflow 合計。
 
 Credit 使用網頁標示查核日期的費率版本；它是參考試算，不代表帳戶實際扣抵。服務模式缺漏時按 Standard 前提試算並明示缺漏，不把未知模式當成已確認；資料不足或未完成時不提供完整 credit 合計。
+
+### v1.2.2 第一項 Windows 人工驗證
+
+2026-10-07 在 `C:/Temp/v1.2.2-gpt-6.1-sol-temperature-acceptance/cli` 的獨立工作區，
+對 net10 `TemperatureConverter` 執行正式 Lite workflow（run
+`20261007060226-TemperatureConverter-ead1269a`）。32/32 測試通過，0 失敗／略過；
+Line 39/39、Branch 22/22（皆 100%），未使用 repair。Production 與 Verifier test
+integrity 通過。保留 6 筆 `NU1900` 警告，原因為無法取得 NuGet 套件弱點資料；build/test
+仍通過，不宣稱該來源已恢復連線。
+
+主代理及兩個子代理的收集紀錄均確認推理強度為 `medium`；模型與實際用量如下。
+用量狀態為 `observed-complete`，observer 已 `settled`，合計 46 requests、
+1,654,440 tokens（含快取）。使用者提供的實際網頁截圖與保存的 `usage/result.json`
+一致；依各模型費率獨立重算也與網頁顯示值一致。
+
+| 代理 | 模型 | 未快取輸入 | 快取輸入 | 輸出 | Standard 前提 credits |
+|---|---|---:|---:|---:|---:|
+| 主代理 | `gpt-6.1-sol` | 54,846 | 504,064 | 4,077 | 5.02171 |
+| Author | `gpt-6-sol` | 50,716 | 694,528 | 7,366 | 7.84994 |
+| Verifier | `gpt-6-sol` | 26,441 | 309,888 | 2,514 | 3.49999 |
+| 合計 | 依各模型分組計算 | 132,003 | 1,508,480 | 13,957 | 16.37164 |
+
+GPT-6.1 Sol 的每百萬未快取輸入／快取輸入／輸出費率為 50／2.5／250 credits，
+GPT-6 Sol 為 50／5／250。三者服務模式皆未記錄；網頁明示「Standard 前提試算」，
+不代表已確認 Standard 或帳戶實際扣抵。第一項確認新模型辨識、快取費率差異、
+混合模型加總與服務模式缺漏提示；未驗證實際 Fast 模式或其他未出現模型的執行結果。
+
+CLI 退出的 `total=58,923` 等於主代理未快取輸入 54,846 加輸出 4,077，不含另列的
+504,064 cached。相加後為主代理含快取總量 562,987，與網頁一致；不是整個 workflow
+總量。54 reasoning 已包含在輸出，不另加總。
+
+本機原始證據保留於以下 run 目錄，包含 `run.json`、`result/result.json`、
+`usage/result.json`、`usage/result.html` 與收集紀錄；不簽入 raw run 產物。
+
+```text
+C:/Temp/v1.2.2-gpt-6.1-sol-temperature-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007060226-TemperatureConverter-ead1269a/TemperatureConverter
+```
+
+### v1.2.2 第二項 Windows 人工驗證（部分完成）
+
+2026-10-07 在 `C:/Temp/v1.2.2-gpt-6.1-sol-weather-acceptance/cli` 的獨立工作區，
+對 net10 `WeatherAlertService` 執行正式 Lite workflow（run
+`20261007062513-WeatherAlertService-0e36b915`）。本輪僅在驗證工作區將 Author／Verifier
+TOML 的模型改為 `gpt-6.1-sol`；Lab 的預設模型仍為 `gpt-6-sol`。
+
+Driver 找不到指定的 `author/initial.json`，以 `contract/fail` 結束；派遣紀錄的
+Author 結果路徑與 manifest 指定路徑一致，該檔確實不存在。測試程式檔已存在，
+但未派遣 Verifier，沒有正式的 Verifier build/test、coverage 或 test integrity 結果。
+不將本輪列為完整 workflow 通過。
+
+後續補讀 Author 原始 session，確認正式結果檔與 `stops/author-initial.json` 的
+`apply_patch` 均收到「Failed to create parent directories」；Driver 派遣前尚未建立
+這兩個父目錄。Driver 已改為派遣前建立指定交付與停止回報目錄，回歸檢查確認代理可
+直接寫入結果與停止檔，且原有停止判定維持不變。39/39 相關 Node 測試通過；
+修正後的完整 workflow 驗證見下節；既有失敗 run 保留，不變更其判定。
+
+用量狀態為 `observed-complete`，observer 已 `settled`，合計 23 requests、
+703,376 tokens（含快取）。實際出現的主代理與 Author 均記錄為 `gpt-6.1-sol`／`medium`；
+網頁正確顯示 workflow `fail`，兩組換算與使用者截圖、獨立重算一致。
+
+| 代理 | 未快取輸入 | 快取輸入 | 輸出 | Standard 前提 credits |
+|---|---:|---:|---:|---:|
+| 主代理 | 47,722 | 291,328 | 3,134 | 3.89792 |
+| Author | 40,701 | 310,784 | 9,707 | 5.23876 |
+| 合計 | 88,423 | 602,112 | 12,841 | 9.13668 |
+
+兩組均採每百萬未快取輸入／快取輸入／輸出 50／2.5／250 credits；服務模式未記錄，
+網頁保留「Standard 前提試算」提示。CLI 退出的 50,856 加上另列的 291,328 cached，
+等於主代理含快取總量 342,184；78 reasoning 已包含在輸出，不另加總。
+本輪確認 Author 的新模型換算及失敗流程的用量報表；未涵蓋的 Verifier 新模型換算與
+三代理皆使用新模型的完整流程，已由下節的修正後驗證補足。
+
+本機原始證據包含 `run.json`、`dispatch/author-initial.json`、`result/result.json`、
+`usage/result.json`、`usage/result.html` 與收集紀錄，保留於以下目錄：
+
+```text
+C:/Temp/v1.2.2-gpt-6.1-sol-weather-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007062513-WeatherAlertService-0e36b915/WeatherAlertService
+```
+
+### v1.2.2 修正後 Windows 人工驗證
+
+2026-10-07 在 `C:/Temp/v1.2.2-gpt-6.1-sol-subscription-acceptance/cli` 的新獨立工作區，
+對 net10 `SubscriptionService` 執行正式 Lite workflow（run
+`20261007065004-SubscriptionService-d75356fe`）。部署的 Driver 與 Lab 修正版雜湊一致；
+Author 的 `author/initial.json` 與 Verifier 的 `verification/initial.json` 均成功交付。
+流程為 `completed/pass`，未使用 repair；54/54 測試通過，0 失敗／略過，Line 76/76、
+Branch 40/40（皆 100%）。Production 與 Verifier test integrity 通過；
+0 build warnings、0 workflow incidents。
+
+三個代理的收集紀錄均確認模型為 `gpt-6.1-sol`、推理強度為 `medium`。
+用量為 `observed-complete`，observer 已 `settled`，合計 32 requests、995,118 tokens
+（含快取）。實際報表、使用者提供的截圖與獨立重算一致。
+
+| 代理 | 未快取輸入 | 快取輸入 | 輸出 | Standard 前提 credits |
+|---|---:|---:|---:|---:|
+| 主代理 | 30,298 | 528,256 | 4,306 | 3.91204 |
+| Author | 79,181 | 187,776 | 6,272 | 5.99649 |
+| Verifier | 22,478 | 134,912 | 1,639 | 1.87093 |
+| 合計 | 131,957 | 850,944 | 12,217 | 11.77946 |
+
+三組費率皆為每百萬未快取輸入／快取輸入／輸出 50／2.5／250 credits；服務模式
+皆未記錄，網頁明示「Standard 前提試算」，不代表已確認 Standard 或帳戶實際扣抵。
+本輪確認修正後的完整交付，以及 GPT-6.1 Sol 在主代理、Author、Verifier 的換算與
+加總；不將不同受測類別的 tokens 或 credits 差異解讀為模型效能比較。
+
+CLI 退出的 34,604 等於主代理未快取輸入 30,298 加輸出 4,306；再加上另列的
+528,256 cached，為主代理含快取總量 562,860，與網頁一致。41 reasoning 已包含在
+輸出，不另加總。
+
+本機原始證據包含 `run.json`、`author/initial.json`、`verification/initial.json`、
+`result/result.json`、`usage/result.json`、`usage/result.html` 與收集紀錄，保留於：
+
+```text
+C:/Temp/v1.2.2-gpt-6.1-sol-subscription-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007065004-SubscriptionService-d75356fe/SubscriptionService
+```
+
+### v1.2.2 多情境 Windows 人工驗證
+
+2026-10-07 以獨立工作區的 net10 `OrderValidator` 執行正式 Lite workflow（run
+`20261007080550-OrderValidator-3e823aed`）。Author／Verifier 正式結果檔均已交付，
+54/54 測試通過、0 失敗／略過，品質、production 與 Verifier test integrity 通過，
+未使用 repair。Line 34/35（97.14%）、Branch 1/2（50%），最終為
+`completed/best_effort`，不宣稱 `pass`。
+
+未覆蓋的是 `OrderValidator.cs:95-96` 的私有 null 防護：第 67 行
+`When(x => x.ProcessedAt.HasValue)` 使 null 值不會進入 `BeAfterCreatedAt`。
+Verifier 保留公開 null 與非 null 邊界案例的證據，未以反射或修改 production 補足
+不可達分支。本輪另有 6 筆 `NU1900` build warnings，Author 回報 1 筆同類套件
+弱點資料連線警告；build／test 仍通過，Verifier runner incidents 為空。
+
+三個代理的收集紀錄均確認為 `gpt-6.1-sol`／`medium`；服務模式未記錄。
+用量為 `observed-complete`，observer 已 `settled`。實際 HTML 的換算函式、
+使用者截圖與獨立整數重算一致：
+
+| 代理 | 未快取輸入 | 快取輸入 | 輸出 | Standard 前提 credits |
+|---|---:|---:|---:|---:|
+| 主代理 | 55,666 | 672,640 | 5,652 | 5.87790 |
+| Author | 38,545 | 338,432 | 7,463 | 4.63908 |
+| Verifier | 16,347 | 299,520 | 2,412 | 2.16915 |
+| 合計 | 110,558 | 1,310,592 | 15,527 | 12.68613 |
+
+合計 43 requests、1,436,677 tokens（含快取）。CLI 的 61,318 為主代理未快取輸入
+加輸出；加上另列 672,640 cached 後為 733,958，與報表主代理總量一致。
+78 reasoning 已包含在輸出，不另加總。Credit 保留 Standard 前提，不代表帳戶扣抵。
+
+本機原始證據保留於：
+
+```text
+C:/Temp/v1.2.2-gpt-6.1-sol-order-validator-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007080550-OrderValidator-3e823aed/OrderValidator
+```
+
+同日以獨立工作區的 net10 `OrderProcessingService` 執行 run
+`20261007082946-OrderProcessingService-14a6255b`，最終 `completed/pass`，
+56/56 測試通過、0 失敗／略過，Line 79/79、Branch 44/44（皆 100%），
+品質、production 與 Verifier test integrity 通過。
+
+本輪使用一次測試品質 repair：初次 Verifier 指出替身僅提供已完成工作，無法驗證
+後續流程是否等待相依工作，以及非同步失敗是否傳遞。Author 補上儲存、確認通知與
+取消狀態更新的等待案例，以及非同步儲存失敗案例，最終 Verifier 判定通過。
+`author/initial.json`、`author/repair.json`、`verification/initial.json` 與
+`verification/final.json` 均存在。
+
+三個代理的 runtime 記錄均為 `gpt-6.1-sol`／`medium`；服務模式未記錄。
+用量為 `observed-complete`，observer 已 `settled`，包含初次流程與 repair 的用量。
+實際 HTML 換算、使用者截圖與獨立整數重算一致：
+
+| 代理 | 未快取輸入 | 快取輸入 | 輸出 | Standard 前提 credits |
+|---|---:|---:|---:|---:|
+| 主代理 | 41,398 | 1,113,728 | 7,858 | 6.81872 |
+| Author | 56,172 | 819,456 | 12,886 | 8.07874 |
+| Verifier | 42,907 | 509,952 | 3,898 | 4.39473 |
+| 合計 | 140,477 | 2,443,136 | 24,642 | 19.29219 |
+
+合計 71 requests、2,608,255 tokens（含快取）。CLI 的 49,256 為主代理未快取輸入
+加輸出；加上另列 1,113,728 cached 後為 1,162,984，與報表主代理總量一致。
+135 reasoning 已包含在輸出，不另加總。Credit 保留 Standard 前提，不代表帳戶扣抵。
+
+最終 build 保留 6 筆 `NU1900` 警告。後續複核原始 Author session：第 55 行記錄
+首次 build 的 `NU1301`，包含 `api.nuget.org:443` 通訊端存取權限遭拒；
+第 71 行記錄忽略失敗來源後仍因找不到 `AwesomeAssertions` 而發生 `NU1101`。
+第 75 行改以使用者 `.nuget/packages` 作為 restore source，並暫時指定
+`NuGetAudit=false`；第 79 行確認還原成功。這是本輪恢復措施，不代表預設還原
+環境已修正。Session 檔名為
+`rollout-2026-10-07T16-30-03-01a1157b-e34e-72a0-8776-022c64241a85.jsonl`，
+位於本機 `C:/Users/mrkt_/.codex/sessions/2026/10/07/`。
+最終 build／test 通過。本機原始 run 證據保留於：
+
+```text
+C:/Temp/v1.2.2-gpt-6.1-sol-order-processing-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007082946-OrderProcessingService-14a6255b/OrderProcessingService
+```
+
+第三個擴充情境為 net10 `ConfigurationLoader`，run
+`20261007085207-ConfigurationLoader-5286769c`。Author／Verifier 正式結果檔均已
+交付，55/55 測試通過、0 失敗／略過；Line 96/96（100%）、Branch 49/50（98%），
+品質、production 與 Verifier test integrity 通過，未使用 repair。
+最終為 `completed/best_effort`，不列為 `pass`。
+
+未覆蓋的是 `ConfigurationLoader.cs:187` 的 `parts.Length > 1` false 分支。
+前置篩選僅保留含等號的行，後續 `Split('=', 2)` 必定產生兩個部分；已核對原始碼
+與 Verifier 證據，該分支無法透過公開 `LoadConfig` 入口觸發。
+
+三個代理的 runtime 記錄均為 `gpt-6.1-sol`／`medium`；服務模式未記錄。
+用量為 `observed-complete`，observer 已 `settled`。實際 HTML 的換算函式、
+使用者截圖與獨立整數重算一致：
+
+| 代理 | 未快取輸入 | 快取輸入 | 輸出 | Standard 前提 credits |
+|---|---:|---:|---:|---:|
+| 主代理 | 39,974 | 677,760 | 5,224 | 4.99910 |
+| Author | 48,421 | 514,176 | 11,480 | 6.57649 |
+| Verifier | 62,670 | 210,816 | 1,876 | 4.12954 |
+| 合計 | 151,065 | 1,402,752 | 18,580 | 15.70513 |
+
+合計 47 requests、1,572,397 tokens（含快取）。CLI 的 45,198 為主代理未快取輸入
+加輸出；加上另列 677,760 cached 後為 722,958，與報表主代理總量一致。
+100 reasoning 已包含在輸出，不另加總。Credit 保留 Standard 前提，不代表帳戶扣抵。
+
+最終 build 保留 6 筆 `NU1900` 警告。原始 Author session 第 47 行確認初次預設
+build 的 `NU1301`，包含 `api.nuget.org:443` 通訊端存取權限遭拒。第 60 行使用
+`RestorePackagesPath` 指向使用者本機快取，並暫時指定
+`RestoreIgnoreFailedSources=true`、`NuGetAudit=false`，第 63 行記錄還原成功；
+後續第 76 行設定 `NUGET_PACKAGES` 使用同一快取，第 78 行確認 build 通過。
+Session 檔名為
+`rollout-2026-10-07T16-52-23-01a11590-5570-73f2-b31d-f4988181e710.jsonl`，
+位於本機 `C:/Users/mrkt_/.codex/sessions/2026/10/07/`。這些恢復措施不代表預設
+還原環境已修正；尚未定位造成通訊端權限限制的層級。Verifier runner incidents
+為空。本機原始證據保留於：
+
+```text
+C:/Temp/v1.2.2-gpt-6.1-sol-configuration-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007085207-ConfigurationLoader-5286769c/ConfigurationLoader
+```
+
+這批三個擴充情境均完成正式 Author／Verifier 交付與 GPT-6.1 Sol 的報表換算核對；
+`OrderProcessingService` 為 `pass`，另兩項保留不可達分支證據並判定 `best_effort`。
+不將三個情境一律宣稱為完整覆蓋率通過。
+
+另以 `C:/Temp/v1.2.2-nuget-permission-configuration-acceptance/cli` 試用 Full Lab 的
+NuGet 權限契約，run `20261007095658-ConfigurationLoader-80352244`。本輪 CLI 明確使用
+`workspace-write`／`on-request`；原始 Author 工具紀錄確認 build 與 test 的單次核准
+重試成功，Verifier 使用既有 runner 封存失敗後重跑。31/31 測試通過，Line 96/96、
+Branch 49/50，品質與完整性通過，0 build warnings，未使用 repair；最終仍因同一個
+不可達分支而為 `best_effort`。兩項 Author 事件在報告中缺少影響說明，原始 artifact
+有保存細節。測試案例數與前輪不同，且 CLI 權限設定不同，不據此推定規則造成品質退化。
+
+本輪實際 HTML 與獨立重算的 Standard 前提 credits 為主代理 5.88964、Author 5.44943、
+Verifier 2.85743，合計 14.19650；三者均為 `gpt-6.1-sol`／`medium`，服務模式未記錄。
+用量已 `observed-complete`／`settled`，合計 45 requests、1,526,966 tokens（含快取）；
+CLI 64,692 加 cached 646,656 為主代理總量 711,348。
+使用者檢視結果後選擇維持原設計，本次新增的 NuGet 權限規則與專用契約測試已撤回，
+Orchestrator、Author、Verifier 回復試用前版本；保留原有 Verifier 核准重跑機制。
+試用工作區及原始 run 證據保留，不將撤回的規則列為 v1.2.2 交付。
 
 ### v1.2.1 Windows 完整流程驗證
 

@@ -198,6 +198,13 @@ function requireSuccess(script, args) {
 
 function manifestAction(manifest, role, mode) {
   const action = buildManifestAction(manifest, role, mode);
+  const resultPath = role === "author"
+    ? action.payload.authorResultPath
+    : action.payload.verificationOutputPath;
+  // 派遣前由 driver 建立指定的交付與停止回報目錄。
+  for (const outputPath of [resultPath, action.payload.phaseStopPath]) {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  }
   const payloadPath = path.join(manifest.runRoot, "dispatch", `${role}-${mode}.json`);
   writeJson(payloadPath, action.payload, { exclusive: true });
   return { ...action, payloadPath };
