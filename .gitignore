@@ -34,3 +34,6 @@ artifacts/
 
 # Lite usage scope claims (not Codex sessions)
 .codex/dotnet-testing-lite-usage/
+
+# 本機對話附件
+/.codex-remote-attachments/01a16265-b1df-79a2-ba30-71ae3963d585/

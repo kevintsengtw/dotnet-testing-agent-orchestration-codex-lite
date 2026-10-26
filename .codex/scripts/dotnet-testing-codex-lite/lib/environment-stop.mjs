@@ -54,6 +54,6 @@ export function validateEnvironmentStop(result, expected) {
 
 export function assertEnvironmentStop(result, expected) {
   const validation = validateEnvironmentStop(result, expected);
-  if (!validation.passed) throw new Error(validation.errors.join("; "));
+  if (!validation.passed) throw new Error(`${validation.errors.join("; ")}; 原始錯誤：${result?.error ?? "未提供"}`);
   return validation.normalized;
 }

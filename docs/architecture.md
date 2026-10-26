@@ -6,7 +6,7 @@ Lite workflow 只有兩個 subagent；Main 不再手工組合 gates、paths 或 
 ```text
 Main
   └─ .codex/scripts/dotnet-testing-codex-lite/nuget-sandbox-preflight.mjs
-       └─ status=ready → .codex/scripts/dotnet-testing-codex-lite/workflow.mjs start / advance
+       └─ ready／可辨識的 skipped → workflow.mjs start / bind-agent / advance
             ├─ Lite Unit Author initial
             ├─ Lite Unit Verifier initial
             │    ├─ pass / best_effort / blocked / not_suitable / fail → terminal
@@ -16,7 +16,9 @@ Main
 ```
 
 NuGet 預檢在目前 Codex 沙箱先檢查既有 test project，若尚未建立則檢查 target 對應的
-來源專案；預檢受阻時不建立 run 或派遣代理。
+來源專案。無法執行或完成輔助預檢時，依 skill 規則保存 skipped 與原始診斷後啟動 driver；
+輸入不合法或實際還原失敗的 blocked 仍停止，不建立 run 或派遣代理。略過不是還原成功，
+後續 build／test／coverage 與完整性 gates 不放寬。
 未設定 `NUGET_PACKAGES` 時直接還原，沿用 `NuGet.Config` 或預設快取；有明確設定時才
 檢查並使用指定快取。缺少此變數不會阻擋；失敗建議依實際診斷提供，CLI override 僅為
 特定快取情況的選用處理。預檢與部署不修改使用者層設定、不自動放寬網路或權限。
@@ -28,7 +30,10 @@ action payload，不解讀 agent artifact，也不直接呼叫 leaf scripts。
 
 Author 同時完成分析、測試撰寫與實測，省略大型 analysis handoff。Verifier 在同一
 context 完成 build、test、target-scoped coverage 與品質審查。repair 與 final 沿用
-原本的 Author／Verifier，不建立替代角色。
+原本的 Author／Verifier，不建立替代角色。派遣後以工具回傳的 agent ID 與 dispatch ID
+登記，advance 核對目前角色與階段；登記時間不代表 runtime 接受派遣時間。
+終態保存獨立證據快照。所有目標終止後，先整理證據，再以 handoff 交付每份完整報告，
+包含失敗目標；不以最後一個目標或摘要取代全部正文。
 
 ## Skill selection
 
@@ -43,7 +48,8 @@ Lite 的 AwesomeAssertions 新專案預設值定義在 Author policy，不修改
 ## Truth and terminal states
 
 - Build/test：`.codex/scripts/dotnet-testing-codex-lite/run-coverage.mjs`、TRX 與 process exit。
-- Coverage：指定 target class 的 Cobertura line／branch。
+- Coverage：指定 target class 或 targetMethod 的原始 Cobertura line／branch；方法無法唯一
+  識別時回報限制，不以整類數值替代。
 - User scenarios：author result mapping 與 deterministic gate。
 - Quality：verifier issues；uncoverable gap 必須附公開 API 反證。
 - Lifecycle：`running|completed|stopped|failed`。

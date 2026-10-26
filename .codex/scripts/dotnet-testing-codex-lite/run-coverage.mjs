@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { runProcess, processDetails, processFailure, errorDetails } from "./lib/process-runner.mjs";
 import { parseCobertura } from "./lib/cobertura.mjs";
 import { parseTrxCounts } from "./lib/trx.mjs";
 import { parseBuildWarnings } from "./lib/build-output.mjs";
@@ -22,6 +22,7 @@ function parseArgs(argv) {
     if (key === "--test-project") args.testProject = value;
     else if (key === "--target-source") args.targetSource = value;
     else if (key === "--target-class") args.targetClass = value;
+    else if (key === "--target-method") args.targetMethod = value;
     else if (key === "--output") args.output = value;
     else if (key === "--production-baseline") args.productionBaseline = value;
     else if (key === "--line-threshold") args.lineThreshold = Number(value);
@@ -48,15 +49,18 @@ function tail(text, count = 30) {
   return text.trim().split(/\r?\n/).slice(-count).join("\n");
 }
 
-function runDotnet(args, cwd) {
-  const result = spawnSync("dotnet", args, {
+export function runDotnet(args, cwd, run = runProcess) {
+  const result = run("dotnet", args, {
     cwd,
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
   });
   return {
-    exitCode: result.status ?? 1,
-    output: `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim(),
+    exitCode: result.error || result.signal ? (result.status || 1) : result.status ?? 1,
+    process: processDetails(result),
+    error: result.error,
+    signal: result.signal,
+    output: `${result.stdout ?? ""}\n${result.stderr ?? ""}${result.error || result.signal ? `\n${processFailure(result)}` : ""}`.trim(),
   };
 }
 
@@ -96,9 +100,9 @@ function finish(manifest, status, startedAtMs) {
   manifest.durationMs = Date.now() - startedAtMs;
 }
 
-function verifyProductionIntegrity(baselinePath) {
+export function verifyProductionIntegrity(baselinePath, run = runProcess) {
   if (!baselinePath) return { status: "not_checked" };
-  const result = spawnSync(
+  const result = run(
     process.execPath,
     [".codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs", "verify", "--manifest", baselinePath],
     { cwd: process.cwd(), encoding: "utf8" },
@@ -109,10 +113,17 @@ function verifyProductionIntegrity(baselinePath) {
   } catch {
     details = { errors: [(result.stderr || result.stdout || "integrity check failed").trim()] };
   }
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    details = { errors: ["integrity check returned an invalid JSON object"] };
+  }
+  if (result.error || result.signal) details.errors = [...(details.errors ?? []), processFailure(result)];
+  const passed = !result.error && !result.signal && result.status === 0 && details.passed === true;
   return {
-    status: result.status === 0 ? "passed" : "failed",
-    baselinePath: path.resolve(baselinePath),
     ...details,
+    passed,
+    status: passed ? "passed" : "failed",
+    baselinePath: path.resolve(baselinePath),
+    process: processDetails(result),
   };
 }
 
@@ -126,6 +137,9 @@ function main() {
   }
   for (const name of ["testProject", "targetSource", "targetClass"]) {
     if (!args[name]) throw new Error(`缺少 --${name.replace(/[A-Z]/g, (value) => `-${value.toLowerCase()}`)}`);
+  }
+  if (args.targetMethod !== undefined && !/^[\p{L}_][\p{L}\p{N}_]*$/u.test(args.targetMethod)) {
+    throw Error("--target-method 必須是單一方法名稱");
   }
 
   const repoRoot = process.cwd();
@@ -144,7 +158,7 @@ function main() {
   );
   const attempt = beginCoverageAttempt({ outputPath, rawDirectory, retry: args.retryBuildFailed,
     retryToolIncident: args.retryToolIncident,
-    testProject, targetSource, targetClass: args.targetClass,
+    testProject, targetSource, targetClass: args.targetClass, targetMethod: args.targetMethod,
     baseline: args.productionBaseline ? path.resolve(args.productionBaseline) : undefined,
     line: args.lineThreshold, branch: args.branchThreshold });
   try {
@@ -153,7 +167,7 @@ function main() {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     startedAt,
-    target: { className: args.targetClass, sourcePath: targetSource },
+    target: { className: args.targetClass, sourcePath: targetSource, ...(args.targetMethod ? { methodName: args.targetMethod } : {}) },
     testProjectPath: testProject,
     thresholds: { line: args.lineThreshold, branch: args.branchThreshold },
     build: null,
@@ -173,6 +187,7 @@ function main() {
   manifest.build = {
     status: build.exitCode === 0 ? "passed" : "failed",
     exitCode: build.exitCode,
+    process: build.process,
     durationMs: Date.now() - buildStartedAtMs,
     warnings: parseBuildWarnings(build.output),
     ...(build.exitCode === 0 ? {} : { outputTail: tail(build.output) }),
@@ -190,7 +205,27 @@ function main() {
   }
 
   const testStartedAtMs = Date.now();
-  const scratchDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-lite-coverage-"));
+  let scratchDirectory;
+  try {
+    // mkdtemp needs the Win32 namespace even when the existing run is readable.
+    scratchDirectory = fs.mkdtempSync(path.toNamespacedPath(
+      path.join(path.dirname(outputPath), ".coverage-scratch-"),
+    ));
+  } catch (error) {
+    manifest.test = { status: "not_run", counts: null, durationMs: 0 };
+    manifest.coverage = { error: error.message };
+    manifest.runnerIncidents.push({
+      kind: "coverage_artifact_error", stage: "scratch_create",
+      message: error.message, error: errorDetails(error), evidencePath: outputPath,
+    });
+    manifest.productionIntegrity = verifyProductionIntegrity(args.productionBaseline);
+    finish(manifest, manifest.productionIntegrity.status === "failed"
+      ? "production_modified" : "tool_incident", startedAtMs);
+    writeJson(outputPath, manifest);
+    console.log(JSON.stringify({ status: manifest.status, outputPath, incidents: manifest.runnerIncidents }));
+    process.exitCode = 2;
+    return;
+  }
   const test = runDotnet(
     [
       "test",
@@ -224,6 +259,7 @@ function main() {
       parsedCoverage = parseCobertura(fs.readFileSync(coveragePath, "utf8"), {
         targetSource,
         targetClass: args.targetClass,
+        targetMethod: args.targetMethod,
       });
     } catch (error) {
       coverageError = error.message;
@@ -231,6 +267,8 @@ function main() {
   }
   const execution = classifyTestExecution({
     exitCode: test.exitCode,
+    error: test.error,
+    signal: test.signal,
     counts,
     coverageAvailable: parsedCoverage !== null,
   });
@@ -240,6 +278,7 @@ function main() {
       ? "passed"
       : execution.deliveryStatus === "failed" ? "failed" : "unavailable",
     exitCode: test.exitCode,
+    process: test.process,
     processStatus: execution.status,
     durationMs: Date.now() - testStartedAtMs,
     counts,
@@ -337,7 +376,7 @@ function main() {
   } finally { attempt.release(); }
 }
 
-try {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) try {
   main();
 } catch (error) {
   console.error(`run-unit-coverage error: ${error.message}`);

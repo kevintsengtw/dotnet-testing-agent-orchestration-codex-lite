@@ -28,6 +28,8 @@ Script 固定：
 `--output` 與對應的 `.raw` evidence 目錄必須尚不存在。正式 workflow 必須傳入
 `--production-baseline`；CLI 雖允許省略，省略時只會記錄 `not_checked`。
 Line／branch 門檻預設各為 100，可用 `--line-threshold`／`--branch-threshold` 指定。
+Payload 限制單一方法時，必須加上 `--target-method <方法名稱>`；summary 與判定只使用該方法的
+行／分支。方法對應不明或多載無法唯一識別時回報錯誤，不以整類數值取代。
 
 規則：
 

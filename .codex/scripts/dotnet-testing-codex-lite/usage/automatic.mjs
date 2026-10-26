@@ -6,7 +6,8 @@ import { state, atomicJson, assertPlainPath } from './lifecycle.mjs';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { collect } from './collect-session.mjs';
-import { renderResult, saveResult, detectPython } from './observer.mjs';
+import { renderResult, saveResult, detectPython, refreshWorkflowOutcome } from './observer.mjs';
+import { measurementScope } from './scope-usage.mjs';
 
 const supportedRootSources = new Set(['cli', 'vscode']);
 
@@ -15,23 +16,23 @@ export function appendUsageLink(manifest) {
     const directory = path.join(manifest.runRoot, 'usage');
     const bindingPath = path.join(directory, 'binding.json');
     const page = path.join(directory, 'result.html');
-    if (!fs.existsSync(bindingPath)) {
-      const statePath = path.join(directory, 'observer-state.json');
-      if (!fs.existsSync(statePath)) return;
-      const failure = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-      if (failure.status !== 'failed') return;
+    refreshWorkflowOutcome(directory, manifest);
+    const statePath = path.join(directory, 'observer-state.json');
+    const failure = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : null;
+    if (failure?.status === 'failed') {
       const reason = String(failure.reason ?? '原因未提供').replace(/[\r\n]+/gu, ' ');
       fs.appendFileSync(manifest.paths.resultMarkdown,
         `\n## 本次 workflow 用量\n\n用量收集啟動失敗，沒有可用的統計資料。原因：${reason}\n` +
         (fs.existsSync(page) ? `\n診斷網頁（非統計結果）：\n\n\`\`\`text\n${pathToFileURL(page).href}\n\`\`\`\n` : ''));
       return;
     }
+    if (!fs.existsSync(bindingPath)) return;
     if (!fs.existsSync(page)) return;
     const binding = JSON.parse(fs.readFileSync(bindingPath, 'utf8'));
     if (binding.workflowId !== manifest.runId) return;
     const url = pathToFileURL(page).href;
     fs.appendFileSync(manifest.paths.resultMarkdown,
-      `\n## 本次 workflow 用量網頁\n\n複製下列網址，貼到本機瀏覽器網址列開啟：\n\n\`\`\`text\n${url}\n\`\`\`\n\n背景量測須等本回合最後回覆完成才收尾；若頁面仍顯示等待，請稍後重新整理。不會自動開啟瀏覽器，也不需要 /exit。\n`);
+      `\n## 本回合用量網頁\n\n複製下列網址，貼到本機瀏覽器網址列開啟：\n\n\`\`\`text\n${url}\n\`\`\`\n\n統計包含本主代理回合的所有 workflow 與其他工作。同回合各報告共用一筆用量，不可相加；測試結果仍各自保留。背景量測須等本回合最後回覆完成才收尾；若頁面仍顯示等待，請稍後重新整理。不會自動開啟瀏覽器，也不需要 /exit。\n`);
   } catch (error) {
     process.stderr.write(`無法附上用量網址（不影響測試判定）：${error.message}\n`);
   }
@@ -57,6 +58,7 @@ export function startAutomaticUsage(manifest, env = process.env, launch = spawn,
     if (created) {
       saveResult(directory, null, false, `背景觀測啟動失敗：${error.message}`);
       state(directory, 'failed', { reason: error.message });
+      refreshWorkflowOutcome(directory);
     }
   };
   try {
@@ -69,9 +71,6 @@ export function startAutomaticUsage(manifest, env = process.env, launch = spawn,
     assertPlainPath(directory);
     fs.mkdirSync(directory, { recursive: true });
     created = true;
-    claimTurn(workspace, manifest, [sessionsRoot, env.CODEX_THREAD_ID, turnId]);
-    state(directory, 'starting');
-    detectPython();
     const binding = { schemaVersion: 1, workflowId: manifest.runId,
       rootThreadId: env.CODEX_THREAD_ID, rootTurnIds: [turnId],
       manifestPath: manifest.manifestPath, sessionsRoot,
@@ -79,12 +78,18 @@ export function startAutomaticUsage(manifest, env = process.env, launch = spawn,
       runtimeSource: capture.metadata.source,
       cliVersion: capture.metadata.cliVersion,
       boundAt: new Date().toISOString(),
-      limitations: ['同一工作區的 root turn 僅限一個 workflow；不支援跨回合續跑或同回合混入其他工作'] };
+      limitations: ['同一 root turn 的全部工作共用用量，不能拆分到單一 workflow；同範圍報告不可相加；不支援跨回合續跑'] };
     const bindingPath = path.join(directory, 'binding.json');
     fs.writeFileSync(bindingPath, JSON.stringify(binding, null, 2), { flag: 'wx' });
-    fs.writeFileSync(path.join(directory, 'result.html'), renderResult({ done: true,
+    claimTurn(workspace, manifest, [sessionsRoot, env.CODEX_THREAD_ID, turnId]);
+    state(directory, 'starting');
+    detectPython(undefined, workspace);
+    const pending = { done: true, updatedAt: new Date().toISOString(), outcome: null,
+      measurementScope: measurementScope(binding), workflow: { id: manifest.runId, target: manifest.targetClass ?? null },
       measurementStatus: 'pending', message: '等待主代理本回合完成及用量收尾，請稍後重新整理本頁。',
-      usageRows: [], creditGroups: [] }), { flag: 'wx' });
+      usageRows: [], creditGroups: [] };
+    atomicJson(path.join(directory, 'result.json'), pending);
+    fs.writeFileSync(path.join(directory, 'result.html'), renderResult(pending), { flag: 'wx' });
     const log = fs.openSync(path.join(directory, 'observer.log'), 'a');
     try {
       const child = launch(process.execPath, [path.join(import.meta.dirname, 'observer.mjs'), bindingPath],

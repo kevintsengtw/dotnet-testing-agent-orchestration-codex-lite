@@ -7,9 +7,21 @@ Lite driver 不產生 token 估算，也不把用量數字寫入 machine result�
 只處理 .NET Unit Test 的輕量、自含 Codex workflow。它以兩個專責 subagent
 降低重複 context，並用實際 build、test 與 target-scoped coverage 驗證結果。
 
+## v1.2.3（2026-10-26）
+
+- Windows 同步子程序分流擷取與長路徑修正；輔助預檢無法完成時可略過，但實際還原失敗
+  與後續必要檢查仍停止。
+- 支援指定單一方法的 coverage；代理身分登記及終態證據快照保留每個目標的執行證據。
+- 單目標與多目標統一交付完整報告，保留測試內容、耗時、異常、限制與用量網址。
+- 同回合多份報告共用一筆用量，各自保留測試判定，不跨報告重複加總。
+
+五個 Windows CLI／VS Code 情境已完成模型驗收，包含預檢故障模擬、多目標、單一方法
+及 Net8 完整類別。公司受影響環境仍須現場驗證；跨平台 CI 以發布 PR 紀錄為準。
+完整變更與限制見 [CHANGELOG](CHANGELOG.md) 與 [v1.2.3 驗收摘要](docs/usage.md#v123-windows-模型驗收)。
+
 ## 用量網頁與 credit 試算
 
-在 Codex CLI 或 VS Code Extension 執行 Lite workflow 後，最終報告會提供可複製的本機網頁網址。開啟網頁即可查看主代理、Author、Verifier 與整個 workflow 的未快取輸入、快取輸入、輸出、總 tokens 及請求數。背景觀測完成後，頁面會顯示用量已收尾；不需要退出 Codex 或另跑收集命令，也不會自動開啟瀏覽器。
+在 Codex CLI 或 VS Code Extension 執行 Lite workflow 後，最終報告會提供可複製的本機網頁網址。開啟網頁即可查看本主代理回合與子代理的未快取輸入、快取輸入、輸出、總 tokens 及請求數。同回合多個 workflow 共用一筆回合用量，報告標示相同的統計範圍識別碼，不能相加或拆算成各目標獨立用量；各 workflow 的測試判定仍分別顯示。背景觀測完成後，頁面會顯示用量已收尾；不需要退出 Codex 或另跑收集命令，也不會自動開啟瀏覽器。
 
 展開網頁的「選用：依 Standard 官方費率換算 credit」，再按「按 Standard 模式換算」，即可查看各代理與合計試算。頁面同時列出模型、推理強度、服務模式、保存的費率版本與計算公式。**這是依 Standard 前提換算的參考值，不是帳戶實際扣抵；服務模式未記錄時仍會明示未知。**
 
@@ -62,6 +74,7 @@ Lite Orchestrator
 Standard 費率換算 credit；目前支援 GPT-6 Sol 與 GPT-6 Luna。這項設定不改變
 workflow topology、repair 額度、coverage 規則或品質門檻；需要採用其他模型時，
 可直接調整對應 TOML 的 `model` 與 `model_reasoning_effort`。
+本版 Luna 驗收使用 `max`；選用 gpt-5.6-luna 或 gpt-6-luna 時，主對話與兩個角色維持一致設定。
 
 ## 使用方式
 
@@ -80,11 +93,18 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 solution 的 target framework、中央套件版本與 project reference 建立最小 xUnit
 scaffold。
 
+只測試單一方法時，在提示詞加上 `target method: <方法名稱>`；coverage 只計算該方法。
+多載或編譯器產物無法唯一識別時會回報限制，不以整類覆蓋率代替。多目標逐一完成後，
+最後回覆保留全部目標的完整報告，包含失敗結果。
+
 Orchestrator 在建立 run 前，先於目前 Codex 沙箱對既有 test project 執行 NuGet 還原預檢；
-若 test project 尚未建立，改預檢 target 對應的來源專案。只有預檢回傳 `ready` 才啟動 driver
-與派遣具名 Author、Verifier。一般啟動不需要設定 `NUGET_PACKAGES` 或為 NuGet 修改
+若 test project 尚未建立，改預檢 target 對應的來源專案。預檢回傳 `ready`，或因執行環境
+限制無法完成而回傳 `skipped`，都可啟動 driver 與派遣具名 Author、Verifier。
+若工具層已拒絕執行預檢，則保留工具錯誤並略過，不要求先修好預檢；略過不代表還原成功，
+後續實際建置、測試與完整性檢查仍必須通過。一般啟動不需要設定 `NUGET_PACKAGES` 或為 NuGet 修改
 `.codex/config.toml`；未設定時沿用 `NuGet.Config` 與預設快取，明確設定時才檢查並使用
-指定快取。還原受阻時會保留診斷並停止，先依錯誤檢查套件來源、快取或存取問題。
+指定快取。輸入／設定不合法，或已執行的還原明確失敗時，仍回報 `blocked` 並停止；
+保留診斷，依錯誤檢查套件來源、快取或存取問題。
 只有確認所需套件位於另一個可讀快取、且目前環境未使用時，才考慮選用 CLI override。
 指令與限制見[使用說明](docs/usage.md#prompt)。
 
@@ -122,8 +142,16 @@ workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
 ## 獨立部署與升級
 
-目前版本為 v1.2.2，新增 GPT-6.1 Sol credit 換算並修正派遣前的交付目錄準備，
-變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。上方 v1.2.0 數據為歷史驗收。
+v1.2.3 的 Windows 同步子程序改以檔案描述元分流擷取，
+涵蓋預檢、Driver、gate、coverage 及 Python 用量查詢。公司受影響環境仍需驗證，
+不能據此宣稱公司端問題已排除。上方 v1.2.2 與更早數據為歷史驗收，
+變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。
+
+升級須使用完整 Lite 部署單位，包含新模組 `lib/process-runner.mjs`、`lib/repair-manifest.mjs`
+與 `lib/workflow-control.mjs`，以及對應角色與技能；不要只替換預檢腳本。
+Coverage scratch 使用 Windows 延伸路徑；Verifier 只交付一次修正建議，由 Driver 產生 repair manifest。
+Windows 的輸出上限在結束後檢查，不限制執行期間磁碟增長，也不等同 maxBuffer 即時終止；
+原有 timeout 設定保留。詳細限制與暫存清理見[使用說明](docs/usage.md#windows-子程序擷取與限制)。
 
 本次 runtime 使用 `.codex/scripts/dotnet-testing-codex-lite/`，13 個技術技能使用
 `.codex/skills/*-lite/`；不依賴 Full 部署資產。安裝範圍為工作區，不建立全域安裝。

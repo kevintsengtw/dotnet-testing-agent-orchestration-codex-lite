@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseTrxTestResults } from "./trx.mjs";
 import { collectTestMethods } from "./test-source-analysis.mjs";
+import { repairGaps, repairScope } from "./repair-manifest.mjs";
 
 const statusLabels = {
   completed: "已完成", stopped: "已停止", pass: "通過", passed: "通過",
@@ -328,14 +329,15 @@ function repairEvidence(manifest, artifacts, authorPhases, verifierPhases) {
   const coverageGaps = repair.coverageGaps ?? [];
   const qualityGaps = repair.qualityGaps ?? [];
   const deliveryGaps = repair.testDeliveryGap ? [repair.testDeliveryGap] : [];
-  const gaps = [...coverageGaps, ...qualityGaps, ...deliveryGaps];
+  const gaps = repairGaps(repair);
   const initialRepairable = new Map(
     (artifacts.initialVerification?.coverageDecision?.repairable ?? [])
       .filter((item) => available(item?.id))
       .map((item) => [item.id, item]),
   );
   const explicitEligibility = artifacts.initialVerification?.repairEligibility ?? null;
-  const derivedScope = coverageGaps.length > 0 && qualityGaps.length > 0
+  const derivedScope = Array.isArray(repair.gaps) ? repairScope(repair)
+    : coverageGaps.length > 0 && qualityGaps.length > 0
     ? "coverage-and-quality"
     : coverageGaps.length > 0 ? "coverage"
       : qualityGaps.length > 0 ? "quality"
@@ -352,26 +354,37 @@ function repairEvidence(manifest, artifacts, authorPhases, verifierPhases) {
         }
       : null
   );
-  const triggers = [
-    ...coverageGaps.map((item) => item.reason ?? initialRepairable.get(item.id)?.reason ?? item.id),
-    ...qualityGaps.map((item) => item.reason ?? item.id),
-    ...deliveryGaps.map((item) => item.reason ?? item.kind),
-  ];
-  const actions = [
-    ...coverageGaps.map((item) => item.action),
-    ...qualityGaps.map((item) => item.action),
-    ...deliveryGaps.map((item) => item.action),
-  ];
-  const writtenFiles = unique((artifacts.author?.tokenEstimateInputs?.writtenFiles ?? [])
-    .map((item) => typeof item === "string" ? item : item?.path));
+  const triggers = gaps.map((item) => item.reason ?? initialRepairable.get(item.id)?.reason ?? item.id ?? item.kind);
+  const actions = gaps.map((item) => item.action);
+  const repairAuthor = artifacts.authorRepair ?? artifacts.author ?? {};
+  const writtenFiles = unique([
+    ...(repairAuthor.testFilePaths ?? []),
+    ...(repairAuthor.changes ?? []).map((item) => item?.testFilePath ?? item?.path),
+    ...(repairAuthor.tokenEstimateInputs?.writtenFiles ?? [])
+      .map((item) => typeof item === "string" ? item : item?.path),
+  ]);
   const isWorkflowEvidence = (filePath) => /(^|[\\/])\.orchestrator([\\/]|$)/u.test(filePath);
+  let changedFiles = writtenFiles.filter((filePath) => !isWorkflowEvidence(filePath));
+  let changedFilesSource = "author-repair";
+  try {
+    const before = JSON.parse(fs.readFileSync(manifest.paths.testIntegrityInitial, "utf8"));
+    const after = JSON.parse(fs.readFileSync(manifest.paths.testIntegrityFinal, "utf8"));
+    if (Array.isArray(before.files) && Array.isArray(after.files) &&
+        [...before.files, ...after.files].every(item => typeof item.path === "string" && typeof item.sha256 === "string")) {
+      const initial = new Map(before.files.map(item => [item.path, item.sha256]));
+      const final = new Map(after.files.map(item => [item.path, item.sha256]));
+      changedFiles = [...new Set([...initial.keys(), ...final.keys()])].filter(file => initial.get(file) !== final.get(file));
+      changedFilesSource = "integrity-snapshots";
+    }
+  } catch { /* Older/partial runs may only have the Author's repair delivery. */ }
   return {
     used: manifest.repairUsed === true, rounds: manifest.repairUsed === true ? 1 : 0,
     triggerReasons: unique(triggers),
     actions: unique(actions),
     eligibility,
     budget: { allowed: 1, used: manifest.repairUsed === true ? 1 : 0 },
-    changedFiles: manifest.repairUsed ? writtenFiles.filter((filePath) => !isWorkflowEvidence(filePath)) : [],
+    changedFiles: manifest.repairUsed ? changedFiles : [],
+    changedFilesSource: manifest.repairUsed ? changedFilesSource : "not_applicable",
     evidenceFiles: manifest.repairUsed ? writtenFiles.filter(isWorkflowEvidence) : [],
     authorRepairStatus: authorPhases.find((phase) => phase.mode === "repair")?.resultStatus ?? "not_observed",
     verifierFinalStatus: verifierPhases.find((phase) => phase.mode === "final")?.resultStatus ?? "not_observed",
@@ -431,8 +444,11 @@ function runnerIncidentEvidence(item, verification) {
     source: "runner",
     phase: item.phase ?? item.stage ?? "runner",
     impact: item.impact ?? item.description ?? item.detail
+      ?? (item.kind === "coverage_artifact_error"
+        ? `Coverage 暫存產物無法建立：${item.error?.message ?? item.message ?? "未提供原始錯誤"}` : null)
       ?? "Runner 在收集machine evidence時回報非預期狀態。",
-    evidence: item.evidence ?? (evidence || "Runner已保留可取得的machine evidence。"),
+    evidence: item.evidence ?? item.evidencePath ?? item.path
+      ?? (evidence || "Runner已保留可取得的machine evidence。"),
     disposition: item.disposition ?? "保留machine evidence，並將runner狀態列為工具異常。",
   };
 }
@@ -507,6 +523,7 @@ export function buildWorkflowResult(manifest, artifacts = {}) {
     schemaVersion: 3, reportContractVersion: 2,
     identity: {
       runId: manifest.runId, target: manifest.targetClass,
+      ...(manifest.targetMethod ? { targetMethod: manifest.targetMethod } : {}),
       targetSourcePath: manifest.targetSourcePath, testProjectPath: manifest.testProjectPath,
     },
     outcome: {
@@ -607,7 +624,7 @@ function renderSummary(result) {
     : `Line ${metric(result.verifier.lineCoverage)}；Branch ${metric(result.verifier.branchCoverage)}`;
   return [
     ...table(["項目", "結果"], [
-      ["Target", code(result.identity.target)],
+      ["Target", code(result.identity.targetMethod ? `${result.identity.target}.${result.identity.targetMethod}` : result.identity.target)],
       ["Build／Test", buildTest],
       ["測試", noTest ? "未建立" : `${targetCases}；共用專案 ${projectTestText(result.verifier.projectTestCounts)}`],
       ["Coverage", coverage],
@@ -622,9 +639,9 @@ function renderTestContent(result) {
   const categories = result.testScope.categories.map((group) =>
     `${categoryLabels[group.category] ?? group.category} ${group.scenarios.length} 項`);
   const output = [
-    `涵蓋類型：${list(categories, "無法取得")}。`,
-    `受測方法：${list(result.author.coveredMethods.map(code), "無法取得")}。`,
-    `測試方法／設計情境／Target cases：${result.author.testMethods ?? "無法取得"}／${result.author.scenarioCount ?? "無法取得"}／${result.author.targetSpecificCases ?? "無法取得"}。`,
+    `涵蓋類型：${list(categories, "無法取得")}。`, "",
+    `受測方法：${list(result.author.coveredMethods.map(code), "無法取得")}。`, "",
+    `測試方法／設計情境／Target cases：${result.author.testMethods ?? "無法取得"}／${result.author.scenarioCount ?? "無法取得"}／${result.author.targetSpecificCases ?? "無法取得"}。`, "",
     `測試檔案：${list(result.author.testFiles.map((item) => code(path.basename(item))), "無")}。`,
   ];
   if (result.testScope.userScenarios.length > 0) output.push("", ...table(
@@ -649,10 +666,10 @@ function renderTiming(result) {
     : "本輪沒有足夠 phase timing 可判讀主要耗時。";
   return [
     ...table(["階段", "耗時", "占比", "工作內容"], rows), "",
-    `證據來源：${code(result.timing.timingSource)}。`,
+    `證據來源：${code(result.timing.timingSource)}。`, "",
     result.timing.observableCoordinationAndValidationMs === null
       ? `協調與驗證時間：無法可靠拆分；${result.timing.observableCoordinationUnavailableReason}。`
-      : `可觀測協調與驗證時間：${duration(result.timing.observableCoordinationAndValidationMs)}。`,
+      : `可觀測協調與驗證時間：${duration(result.timing.observableCoordinationAndValidationMs)}。`, "",
     interpretation,
   ];
 }
@@ -672,7 +689,7 @@ function renderDelivery(result) {
   if (result.repair.used) output.push(
     ...detailLines("修正原因", result.repair.triggerReasons, "Verifier 要求修正"),
     ...detailLines("修正內容", result.repair.actions, "Author artifact 未提供修正動作"),
-    `- 修正檔案：${list(result.repair.changedFiles.map(code), "未提供")}；最終驗證：${label(result.repair.verifierFinalStatus)}。`,
+    `- 修正檔案：${list(result.repair.changedFiles.map(code), result.repair.changedFilesSource === "integrity-snapshots" ? "無檔案差異" : "未提供")}；最終驗證：${label(result.repair.verifierFinalStatus)}。`,
   );
   const issues = result.verifier.quality?.issues ?? [];
   if (issues.length > 0) output.push(`- 品質問題：${sentenceList(semanticList(issues))}`);

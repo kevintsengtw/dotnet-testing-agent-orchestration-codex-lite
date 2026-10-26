@@ -15,7 +15,7 @@ export function usageRows(report, captures = []) {
   return [...[...groups].sort(([a], [b]) => a === report.rootThreadId ? -1 : b === report.rootThreadId ? 1 : a.localeCompare(b))
     .map(([id, requests]) => row(id === report.rootThreadId ? '主代理' :
       `子代理 ${captures.find(c => c.metadata.id === id)?.metadata.agentPath || id}`, requests, id)),
-    row('整個 workflow 合計', report.selectedRequests)];
+    row(report.measurementScope?.kind === 'root-turn' ? '本回合共同合計（不可跨報告相加）' : '整個 workflow 合計', report.selectedRequests)];
 }
 
 export function creditGroups(report,captures){

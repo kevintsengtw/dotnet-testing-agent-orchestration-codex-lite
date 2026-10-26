@@ -18,6 +18,8 @@ tests；不探索其他target、benchmark、歷史run或驗收資料。
 只修改payload指定的test delivery。既有tests是輸入，不先刪除再重建。Skills只在具體技術疑問時
 讀取最少必要內容，不以skill採用與否作為品質證明。
 
+Payload 若有 targetMethod，測試限制於該方法的公開行為；不為提升整類覆蓋率擴張到其他成員。
+
 ## 測試設計
 
 - 從public API、文件、使用者scenario及可觀察source behavior建立可否證的期望。

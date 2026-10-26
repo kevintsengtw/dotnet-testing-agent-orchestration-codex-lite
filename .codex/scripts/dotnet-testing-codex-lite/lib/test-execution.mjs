@@ -1,4 +1,9 @@
-export function classifyTestExecution({ exitCode, counts, coverageAvailable }) {
+export function classifyTestExecution({ exitCode, counts, coverageAvailable, error, signal }) {
+  if (error || signal) return {
+    status: "tool_incident", deliveryStatus: "unavailable",
+    incident: { kind: "runner_process_error", exitCode, signal: signal ?? null,
+      message: error?.message ?? `test process terminated by ${signal}` },
+  };
   const allPassed = Number.isInteger(counts?.total) && counts.total > 0 &&
     counts.failed === 0 && counts.passed === counts.total;
   if (exitCode === 0) {

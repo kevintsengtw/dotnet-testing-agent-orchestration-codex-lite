@@ -1,11 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import crypto from 'node:crypto';
 
 const fields = ['input_tokens', 'cached_input_tokens', 'cache_write_input_tokens',
   'output_tokens', 'reasoning_output_tokens', 'total_tokens'];
 
-// Workflow scope: explicit root-turn membership, never a session-counter subtraction.
+export function measurementScope(binding) {
+  if (!binding?.rootThreadId || !binding.rootTurnIds?.length) return null;
+  const rootTurnIds = [...new Set(binding.rootTurnIds)].sort();
+  return { kind: 'root-turn', id: crypto.createHash('sha256')
+    .update(JSON.stringify([binding.rootThreadId, rootTurnIds])).digest('hex'),
+    rootThreadId: binding.rootThreadId, rootTurnIds, additiveAcrossWorkflows: false };
+}
+
+// Explicit root-turn membership, never per-workflow attribution or a session-counter subtraction.
 export function summarizeScope(scope, relations, captures) {
   if (!scope.workflowId || !scope.rootThreadId || !scope.rootTurnIds?.length ||
       scope.rootTurnIds.some(id => typeof id !== 'string' || !id)) throw new Error('Explicit scope required');
@@ -70,7 +79,7 @@ export function summarizeScope(scope, relations, captures) {
     if (sum !== null && !Number.isSafeInteger(sum)) throw new Error('Usage sum overflow');
     return [k, sum];
   }));
-  return { schemaVersion: 1, workflowId: scope.workflowId, rootThreadId: scope.rootThreadId,
+  return { schemaVersion: 1, workflowId: scope.workflowId, measurementScope: measurementScope(scope), rootThreadId: scope.rootThreadId,
     rootTurnIds: [...turns], selectedRequests: selected, excludedRequestIds: excluded.map(r => r.responseId),
     unresolvedRequestIds: unresolved,
     missingCaptureIds: [...parents.keys()].filter(id => !threads.has(id)),
@@ -78,7 +87,8 @@ export function summarizeScope(scope, relations, captures) {
     observedTotals, completion,
     allObservedTurnsCompleted: completion.every(c => c.started && c.completed && !c.interrupted),
     phase: 'snapshot', completeness: 'partial', usage: null, credits: null,
-    limitations: ['Explicit root turns must contain only this workflow; mixed work within one root turn is not separable',
+    limitations: ['Usage covers the entire selected root turn, including every workflow and other work in that turn; it is not separable per workflow',
+      'Reports with the same measurementScope.id share one total and must not be added together',
       'Version-specific rootTurnId attribution; persisted descendants may be incomplete',
       'Observed completion and stable snapshots do not guarantee final usage settlement',
       'No verified per-request pricing or enterprise credit conversion'] };

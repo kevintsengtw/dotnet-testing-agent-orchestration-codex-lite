@@ -1,4 +1,4 @@
-# Codex CLI／Extension 自動 workflow 用量
+# Codex CLI／Extension 自動回合用量
 
 一般提示詞啟動 Lite workflow、driver 執行 `start` 時，自動繫結目前 Codex CLI 或 Extension
 thread 的唯一活動回合，啟動背景觀測。不需要驗收 PS1、特製提示詞、
@@ -16,8 +16,10 @@ driver 的最終 Markdown 附上可複製到瀏覽器網址列的 `file:///` 網
   `state_5.sqlite`；使用內部紀錄格式，不保證未來 CLI 版本相容。
 - 僅在 session metadata 的 source 為已驗證的 `cli` 或 `vscode` 時啟用；其他 host
   不會自動猜測或啟動背景觀測。
-- 一個主代理回合只能有一個 workflow。跨回合續跑及同回合混入其他工作
-  尚不支援；不可將這些情境的結果解讀為精確 workflow 用量。
+- 同一主代理回合可依序執行多個 workflow，各 run 都會產生用量頁與自己的測試判定。
+  用量範圍是整個主代理回合，包含所有 workflow、其他工作與子代理，不能可靠拆分到單一目標。
+  同範圍報告的 `measurementScope.id` 相同，且 `additiveAcrossWorkflows=false`；
+  彙總時每個識別碼只計一次，不將多張報告相加。跨回合續跑仍未支援。
 - 等待上限兩小時。資料不足或回合中止會標示未完成，不提供 credit 合計。
   觀測一致不是帳務結算保證；資料庫未落盤的子代理仍有偵測限制。
 - credit 為網頁上的選用 Standard 試算，按請求當時的模型分組；
@@ -90,8 +92,9 @@ node .codex/scripts/dotnet-testing-codex-lite/usage/recover.mjs "tests/My Projec
 
 復原只發布 incomplete 用量快照，不會改 workflow terminal decision 或解除 active-run lock。
 之後仍須由 cleanup 核對該 run 已 terminal，才可刪除。
-已部署工作區內的 `.orchestrator/dotnet-testing-lite/usage-turns/` 保存回合防重複繫結紀錄。
-防重複只涵蓋同一工作區；不同工作區的同回合報告不可相加視為互不重複的用量。
+已部署工作區內的 `.orchestrator/dotnet-testing-lite/usage-turns/` 保存每個 run 的回合繫結紀錄，
+同一 run 不重複啟動觀測，不同 run 可以繫結同一回合。舊版單回合索引仍可清理。
+不同工作區的同回合報告也不可相加視為互不重複的用量。
 run cleanup 會同步預覽並移除本次成功刪除 run 的對應索引，一般清理不需要再執行另一道命令。只有曾手動刪除 run 或索引清理失敗時，才使用下列命令清理孤立索引；仍有 run、損毀或未知項目保留：
 
 ```text

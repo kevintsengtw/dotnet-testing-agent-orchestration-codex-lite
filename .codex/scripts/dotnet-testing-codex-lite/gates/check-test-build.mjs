@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { runProcess, processDetails, processFailure } from "../lib/process-runner.mjs";
+import { parseBuildWarnings } from "../lib/build-output.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -34,7 +35,7 @@ try {
   const testProject = path.resolve(args.testProject);
   if (!fs.existsSync(testProject)) throw new Error(`test project does not exist: ${testProject}`);
   const startedAt = Date.now();
-  const result = spawnSync(
+  const result = runProcess(
     args.dotnet,
     ["build", testProject, "--no-incremental", "--nologo", "--verbosity", "minimal"],
     {
@@ -43,21 +44,27 @@ try {
       shell: process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(args.dotnet),
     },
   );
-  if (result.error) throw result.error;
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const compact = compactErrors(output);
   const manifest = {
-    status: result.status === 0 ? "passed" : "failed",
+    status: !result.error && !result.signal && result.status === 0 ? "passed" : "failed",
     exitCode: result.status,
+    process: processDetails(result),
+    warnings: parseBuildWarnings(output),
     durationMs: Date.now() - startedAt,
     ...compact,
   };
+  if (result.error || result.signal) {
+    manifest.errors = [processFailure(result), ...manifest.errors].slice(0, 8);
+    manifest.errorCount += 1;
+    manifest.truncated = manifest.errorCount > 8;
+  }
   if (manifest.status === "failed" && manifest.errors.length === 0) {
     manifest.errors = output.split(/\r?\n/u).filter(Boolean).slice(-4);
     manifest.errorCount = manifest.errors.length;
   }
   console.log(JSON.stringify(manifest));
-  process.exitCode = result.status === 0 ? 0 : 1;
+  process.exitCode = manifest.status === "passed" ? 0 : 1;
 } catch (error) {
   console.error(`check-test-build error: ${error.message}`);
   process.exitCode = 1;

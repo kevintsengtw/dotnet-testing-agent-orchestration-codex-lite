@@ -3,8 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { runProcess, processDetails, errorDetails } from "./lib/process-runner.mjs";
 import { fileURLToPath } from "node:url";
+import { getSystemErrorMap } from "node:util";
 
 function remediationFor(kind, details) {
   switch (kind) {
@@ -18,7 +19,11 @@ function remediationFor(kind, details) {
       return ["檢查已明確設定的 NUGET_PACKAGES：必須是存在且目前執行環境可讀的絕對目錄。",
         "若不需要指定快取，可移除自己設定的 override，沿用 NuGet.Config 與 NuGet 預設快取；一般啟動不需要此變數。"];
     case "dotnet-unavailable":
-      return ["依原始執行錯誤檢查 .NET SDK、PATH 或還原逾時問題，再重新執行預檢。"];
+      if (details.process?.error?.stage) return ["依 process 與 capture 診斷檢查工作區暫存準備、輸出大小、讀取或清理失敗；這不是缺少 SDK 的判定。"];
+      if (["EPERM", "EACCES"].includes(details.process?.error?.code)) {
+        return ["子程序執行遭拒；保留原始 code、syscall 與目前執行環境證據，檢查實際存取限制。單憑此錯誤不能判定管線、ACL 或安全軟體是原因。"];
+      }
+      return ["依原始執行錯誤檢查 .NET SDK、PATH 或還原逾時問題；預檢未完成不代表後續建置已失敗。"];
     case "nuget-restore-unavailable": {
       const output = details.output ?? "";
       const advice = [];
@@ -47,6 +52,25 @@ function blocked(kind, message, details = {}) {
   return { status: "blocked", kind, message, remediation: remediationFor(kind, details), ...details };
 }
 
+function skipped(kind, message, details = {}) {
+  return { status: "skipped", kind, message, restoreVerified: false,
+    remediation: [...remediationFor(kind, details),
+      "記錄此次預檢未完成並繼續啟動 driver；後續實際還原、建置、測試與完整性檢查仍依原規則判定。不要提高權限或自動重跑預檢。"],
+    ...details };
+}
+
+const permissionDenied = error => ["EPERM", "EACCES"].includes(error?.code);
+const systemErrorCodes = new Set([...getSystemErrorMap().values()].map(([code]) => code));
+const systemError = error => systemErrorCodes.has(error?.code);
+
+function statIfPresent(file) {
+  try { return fs.statSync(file); }
+  catch (error) {
+    if (["ENOENT", "ENOTDIR"].includes(error?.code)) return null;
+    throw error;
+  }
+}
+
 function inside(root, candidate) {
   const relative = path.relative(root, candidate);
   return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
@@ -63,24 +87,24 @@ function sourceProject(root, targetSource) {
   return null;
 }
 
-export function checkNugetSandbox({ workspaceRoot, targetSource, testProject },
-  { env = process.env, restore = spawnSync } = {}) {
+function inspectNugetSandbox({ workspaceRoot, targetSource, testProject },
+  { env = process.env, restore = runProcess } = {}) {
   const root = fs.realpathSync(path.resolve(workspaceRoot));
   const source = path.resolve(targetSource);
   const test = path.resolve(testProject);
   if (!inside(root, source) || !inside(root, test)) {
     return blocked("project-outside-workspace", "Target 與測試專案必須位於目前工作區。", { root, source, test });
   }
-  if (!fs.existsSync(source) || !fs.statSync(source).isFile() || !inside(root, fs.realpathSync(source))) {
+  if (!statIfPresent(source)?.isFile() || !inside(root, fs.realpathSync(source))) {
     return blocked("target-source-unavailable", "Target source 不存在或不在工作區內。", { source });
   }
   let project = test;
   let projectKind = "test";
-  if (!fs.existsSync(test)) {
+  if (!statIfPresent(test)) {
     project = sourceProject(root, source);
     projectKind = "source";
   }
-  if (!project || !fs.existsSync(project) || !fs.statSync(project).isFile() ||
+  if (!project || !statIfPresent(project)?.isFile() ||
       !inside(root, fs.realpathSync(project))) {
     return blocked("restore-project-unavailable", "無法找到工作區內唯一的還原專案。", { source, test });
   }
@@ -91,6 +115,11 @@ export function checkNugetSandbox({ workspaceRoot, targetSource, testProject },
       if (!path.isAbsolute(packages) || !fs.statSync(packages).isDirectory()) throw Error("快取目錄無效");
       fs.accessSync(packages, fs.constants.R_OK);
     } catch (error) {
+      if (permissionDenied(error)) {
+        return skipped("nuget-cache-unavailable", "目前環境無法檢查指定快取；略過前置還原檢查。", {
+          packages, error: error.message, code: error.code,
+        });
+      }
       return blocked("nuget-cache-unavailable", "指定的 NUGET_PACKAGES 不是存在且可讀的絕對目錄。", {
         packages, error: error.message,
       });
@@ -99,22 +128,56 @@ export function checkNugetSandbox({ workspaceRoot, targetSource, testProject },
 
   const args = ["restore", project, ...(packages ? ["--packages", packages] : []),
     "--ignore-failed-sources", "--verbosity", "minimal"];
-  const result = restore("dotnet", args, {
-    cwd: path.dirname(project), env, encoding: "utf8", windowsHide: true,
-    maxBuffer: 2 * 1024 * 1024, timeout: 120000,
-  });
-  if (result.error) {
-    return blocked("dotnet-unavailable", "無法執行 NuGet 還原預檢。", {
-      project, error: result.error.message,
+  let result;
+  try {
+    result = restore("dotnet", args, {
+      cwd: path.dirname(project), captureRoot: root, env, encoding: "utf8", windowsHide: true,
+      maxBuffer: 2 * 1024 * 1024, timeout: 120000,
+    });
+  } catch (error) {
+    // Only system invocation errors are optional; do not hide programming errors.
+    if (!systemError(error)) throw error;
+    result = { error, status: null, signal: null };
+  }
+  // Windows capture returns invocation errors instead of throwing them. Apply the
+  // same classification to both paths; a missing status alone is not evidence of an environment failure.
+  if (result?.error && !systemError(result.error)) throw result.error;
+  const signalled = typeof result?.signal === "string" && result.signal.length > 0;
+  if (!result || typeof result !== "object" || Array.isArray(result) ||
+      (result.signal != null && !signalled) ||
+      (!result.error && !signalled && (!Number.isInteger(result.status) || result.status < 0))) {
+    return blocked("preflight-result-invalid", "預檢執行層回傳無法辨識的結果；停止並保留原始診斷。", {
+      project, projectKind, packages, restoreVerified: false, rawResult: result ?? null,
+    });
+  }
+  if (result.error || signalled) {
+    return skipped("dotnet-unavailable", "無法取得完整的 NuGet 預檢結果；略過預檢並繼續 workflow。", {
+      project, projectKind, packages,
+      error: result.error?.message ?? (result.signal ? `預檢被 ${result.signal} 中止` : "預檢未回傳有效退出碼"),
+      exitCode: result.status ?? null,
+      process: processDetails(result),
+      output: `${result.stdout ?? ""}${result.stderr ?? ""}`.slice(-4000),
     });
   }
   if (result.status !== 0) {
     return blocked("nuget-restore-unavailable", "指定專案在目前快取、套件來源與沙箱權限下無法還原。", {
       project, projectKind, packages, exitCode: result.status,
+      process: processDetails(result),
       output: `${result.stdout ?? ""}${result.stderr ?? ""}`.slice(-4000),
     });
   }
   return { status: "ready", project, projectKind, packages, restoreExitCode: 0 };
+}
+
+export function checkNugetSandbox(options, dependencies = {}) {
+  try {
+    return inspectNugetSandbox(options, dependencies);
+  } catch (error) {
+    if (!permissionDenied(error)) throw error;
+    return skipped("preflight-access-denied", "目前環境無法讀取預檢所需資訊；略過前置還原檢查。", {
+      error: error.message, code: error.code,
+    });
+  }
 }
 
 function parseArgs(argv) {
@@ -135,10 +198,11 @@ function parseArgs(argv) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const result = checkNugetSandbox(parseArgs(process.argv.slice(2)));
-    (result.status === "ready" ? process.stdout : process.stderr).write(`${JSON.stringify(result)}\n`);
-    if (result.status !== "ready") process.exitCode = 1;
+    const canContinue = ["ready", "skipped"].includes(result.status);
+    (canContinue ? process.stdout : process.stderr).write(`${JSON.stringify(result)}\n`);
+    if (!canContinue) process.exitCode = 1;
   } catch (error) {
-    process.stderr.write(`${JSON.stringify(blocked("preflight-error", error.message))}\n`);
+    process.stderr.write(`${JSON.stringify(blocked("preflight-error", error.message, { error: errorDetails(error) }))}\n`);
     process.exitCode = 1;
   }
 }

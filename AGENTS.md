@@ -2,12 +2,13 @@
 
 ## 專案目標
 
-本 repo 提供自含式 .NET Unit Test Lite workflow。優先降低 agent context，並以
+本 repo 提供 v1.2.3 自含式 .NET Unit Test Lite workflow。優先降低 agent context，並以
 實測 line／branch coverage 最大化合理可測程式碼的覆蓋。
 
 ## 語言與風格
 
-- 對話與文件使用繁體中文。
+- 對話與文件使用繁體中文及臺灣慣用語，直接陳述任務與結果。
+- 結論須有實際證據；未執行的驗證、尚未收尾的用量與環境限制如實註明。
 - 測試方法使用中文三段式：`方法名_情境描述_預期結果`。
 - Markdown fenced code block必須標記語言。
 
@@ -34,3 +35,5 @@ Contributor 若要改變 workflow 行為，必須修改上述資產與對應 det
 
 - 本 repo 只接受 xUnit Unit Test workflow 資產，不加入 TUnit、Integration 或 Aspire workflow。
 - `.orchestrator/`、`TestResults/`、`bin/`、`obj/` 不得簽入。
+- 升級依 README 與 docs/usage.md 更新完整 Lite 部署單位；保留使用者設定、外部 skills
+  與既有執行證據，不以 public workspace 設定整份覆寫其他專案設定。

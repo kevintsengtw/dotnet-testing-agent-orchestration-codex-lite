@@ -4,7 +4,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { bindAgent, assertPhaseAgent, preserveTerminalEvidence, collectHandoff, finalDelivery } from "./lib/workflow-control.mjs";
+import { acquire } from "./usage/lifecycle.mjs";
+import { parseCobertura } from "./lib/cobertura.mjs";
+import { runProcess, processDetails, processFailure } from "./lib/process-runner.mjs";
 import {
   completePhase,
   finishManifest,
@@ -16,21 +19,36 @@ import {
   writeWorkflowResult,
 } from "./lib/workflow-result.mjs";
 import { assertEnvironmentStop, buildOutputRoots } from "./lib/environment-stop.mjs";
+import { projectRepairManifest, repairScope } from "./lib/repair-manifest.mjs";
 import { startAutomaticUsage, appendUsageLink } from "./usage/automatic.mjs";
 
 const repoRoot = process.cwd();
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  const result = { command, scenarios: [] };
+  const result = { command, scenarios: [], manifests: [] };
+  const allowed = {
+    start: ["--target-source", "--target-class", "--target-method", "--test-project", "--run-id", "--scenario"],
+    "bind-agent": ["--manifest", "--agent-id", "--dispatch-id"],
+    advance: ["--manifest", "--agent-id", "--dispatch-id"],
+    handoff: ["--manifest"],
+  };
+  const seen = new Set();
   for (let index = 0; index < rest.length; index += 1) {
     const key = rest[index];
+    if (!allowed[command]?.includes(key)) throw Error(`指令 ${command} 不接受參數: ${key}`);
     const value = rest[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`參數缺少值: ${key}`);
+    if (seen.has(key) && key !== "--scenario" && !(command === "handoff" && key === "--manifest")) throw new Error(`單值參數不得重複: ${key}`);
+    seen.add(key);
     if (key === "--target-source") result.targetSource = value;
     else if (key === "--target-class") result.targetClass = value;
+    else if (key === "--target-method") result.targetMethod = value;
     else if (key === "--test-project") result.testProject = value;
     else if (key === "--run-id") result.runId = value;
-    else if (key === "--manifest") result.manifest = value;
+    else if (key === "--manifest") { result.manifest = value; result.manifests.push(value); }
+    else if (key === "--agent-id") result.agentId = value;
+    else if (key === "--dispatch-id") result.dispatchId = value;
     else if (key === "--scenario") result.scenarios.push(value);
     else throw new Error(`未知參數: ${key}`);
     index += 1;
@@ -65,7 +83,7 @@ function readJson(filePath) {
 }
 
 function runNode(script, args) {
-  return spawnSync(process.execPath, [script, ...args], {
+  return runProcess(process.execPath, [script, ...args], {
     cwd: repoRoot,
     encoding: "utf8",
     maxBuffer: 20 * 1024 * 1024,
@@ -73,7 +91,7 @@ function runNode(script, args) {
 }
 
 function compactOutput(result) {
-  return (result.stderr || result.stdout || "command failed").trim().split(/\r?\n/u).slice(-12).join("\n");
+  return `${processFailure(result)}\n${(result.stderr || result.stdout || "command failed").trim().split(/\r?\n/u).slice(-12).join("\n")}`;
 }
 
 function measuredFile(filePath) {
@@ -192,7 +210,7 @@ function captureObservation(manifest, phase) {
 
 function requireSuccess(script, args) {
   const result = runNode(script, args);
-  if (result.status !== 0) throw new Error(`${path.basename(script)}: ${compactOutput(result)}`);
+  if (result.error || result.status !== 0 || result.signal) throw new Error(`${path.basename(script)}: ${compactOutput(result)}`);
   return result.stdout.trim();
 }
 
@@ -207,7 +225,8 @@ function manifestAction(manifest, role, mode) {
   }
   const payloadPath = path.join(manifest.runRoot, "dispatch", `${role}-${mode}.json`);
   writeJson(payloadPath, action.payload, { exclusive: true });
-  return { ...action, payloadPath };
+  const phase = manifest.phases.at(-1);
+  return { ...action, payloadPath, dispatchId: phase.dispatchId, agentId: manifest.agentIds?.[role] ?? null };
 }
 
 function buildManifestAction(manifest, role, mode) {
@@ -224,6 +243,7 @@ function buildManifestAction(manifest, role, mode) {
         mode,
         targetSourcePath: manifest.targetSourcePath,
         targetClass: manifest.targetClass,
+        ...(manifest.targetMethod ? { targetMethod: manifest.targetMethod } : {}),
         testProjectPath: manifest.testProjectPath,
         testProjectMode: manifest.testProjectMode,
         outputTestPath: manifest.outputTestPath,
@@ -253,6 +273,7 @@ function buildManifestAction(manifest, role, mode) {
     payload: {
       targetSourcePath: manifest.targetSourcePath,
       targetClass: manifest.targetClass,
+      ...(manifest.targetMethod ? { targetMethod: manifest.targetMethod } : {}),
       testProjectPath: manifest.testProjectPath,
       authorResultPath,
       verificationOutputPath,
@@ -306,6 +327,7 @@ function start(args) {
   for (const key of ["targetSource", "targetClass", "testProject"]) {
     if (!args[key]) throw new Error(`start 缺少 --${key.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`);
   }
+  if (args.targetMethod && !/^[\p{L}_][\p{L}\p{N}_]*$/u.test(args.targetMethod)) throw Error("--target-method 必須是單一方法名稱");
   const targetSourcePath = path.resolve(args.targetSource);
   const testProjectPath = path.resolve(args.testProject);
   if (!fs.existsSync(targetSourcePath)) throw new Error(`target source 不存在: ${targetSourcePath}`);
@@ -335,11 +357,14 @@ function start(args) {
     const startedAtEpochMs = Date.now();
     const manifest = {
       schemaVersion: 3,
+      requireAgentBinding: true,
+      agentIds: {},
       runId,
       runRoot: paths.runRoot,
       manifestPath: paths.manifest,
       targetSourcePath,
       targetClass: args.targetClass,
+      ...(args.targetMethod ? { targetMethod: args.targetMethod } : {}),
       testProjectPath,
       testProjectMode: fs.existsSync(testProjectPath) ? "use-existing" : "create",
       outputTestPath: path.join(path.dirname(testProjectPath), `${shortClass(args.targetClass)}Tests.cs`),
@@ -468,25 +493,39 @@ function verifierGates(manifest, verificationPath, mode) {
     "--user-scenarios", manifest.paths.userScenarios,
   ]);
   projectGate(manifest, author, mode);
+  if (manifest.targetMethod && verification.coverage?.line) {
+    if (verification.target?.methodName !== manifest.targetMethod ||
+        verification.target?.className !== manifest.targetClass ||
+        verification.target?.sourcePath !== manifest.targetSourcePath || !verification.coverage.reportPath) {
+      throw Error("方法範圍與 runner 產物不符；不得使用整類 coverage 判定");
+    }
+    const measured = parseCobertura(fs.readFileSync(verification.coverage.reportPath, "utf8"), {
+      targetSource: manifest.targetSourcePath, targetClass: manifest.targetClass, targetMethod: manifest.targetMethod,
+    });
+    for (const key of ["scope", "line", "branch"]) {
+      if (JSON.stringify(measured[key]) !== JSON.stringify(verification.coverage[key])) throw Error(`方法 coverage ${key} 與原始 Cobertura 不符`);
+    }
+  }
   const decision = verification.coverageDecision?.status;
   let repairEligibility = null;
   if (decision === "needs_repair") {
+    if (mode !== "initial" || manifest.repairUsed) throw Error("final verification cannot request repair");
+    if (!fs.existsSync(manifest.paths.repair)) {
+      const repair = projectRepairManifest(verification, verificationPath);
+      fs.mkdirSync(path.dirname(manifest.paths.repair), { recursive: true });
+      fs.writeFileSync(manifest.paths.repair, `${JSON.stringify(repair, null, 2)}\n`, { flag: "wx" });
+    }
     const repair = readJson(manifest.paths.repair);
-    const scopes = [
-      (repair.coverageGaps?.length ?? 0) > 0 ? "coverage" : null,
-      (repair.qualityGaps?.length ?? 0) > 0 ? "quality" : null,
-      repair.testDeliveryGap ? "test-delivery" : null,
-    ].filter(Boolean);
     repairEligibility = {
       status: "eligible",
-      scope: scopes.length === 1 ? scopes[0] : "mixed",
+      scope: repairScope(repair),
       ...(verification.build?.status === "failed" ? { failedPhase: "build" }
         : verification.test?.status === "failed" ? { failedPhase: "test" } : {}),
     };
   }
   verification = {
     ...verification,
-    isFinal: decision !== "needs_repair",
+    isFinal: mode === "final" || decision !== "needs_repair",
     projectValidation: {
       status: "passed",
       path: mode === "final" ? manifest.paths.projectFinal : manifest.paths.projectInitial,
@@ -523,15 +562,29 @@ function productionIntegrity(manifest) {
   const result = runNode(".codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs", [
     "verify", "--manifest", manifest.paths.productionBaseline,
   ]);
+  if (result.error || result.signal || result.status !== 0) {
+    manifest.workflowIncidents.push({ kind: "production_integrity_process_failed",
+      message: compactOutput(result), process: processDetails(result) });
+    if (result.error || result.signal) return "unavailable";
+  }
   try {
     const parsed = JSON.parse(result.stdout);
-    return parsed.passed ? "passed" : "failed";
+    return result.status === 0 && parsed.passed ? "passed" : "failed";
   } catch {
     return "unavailable";
   }
 }
 
 function finalize(manifest, decision, details = {}) {
+  const verificationEvidence = readIfExists(manifest.repairUsed
+    ? manifest.paths.verificationFinal : manifest.paths.verificationInitial);
+  if (manifest.testIntegrityStatus === "passed" && verificationEvidence?.status === "coverage_complete" &&
+      verificationEvidence.goal?.met === true) {
+    details = { ...details, coverageStatus: "complete" };
+  }
+  if (manifest.testIntegrityStatus === "passed" && ["pass", "issues"].includes(verificationEvidence?.quality?.status)) {
+    details = { ...details, qualityStatus: verificationEvidence.quality.status };
+  }
   finishManifest(manifest, decision, details);
   const production = productionIntegrity(manifest);
   if (production !== "passed") {
@@ -546,6 +599,7 @@ function finalize(manifest, decision, details = {}) {
       terminalDecision: "fail",
       stopReason: "integrity",
       deliveryStatus: "failed",
+      coverageStatus: "unavailable",
     });
   }
   const workflowFinishedAtEpochMs = Date.now();
@@ -575,15 +629,19 @@ function finalize(manifest, decision, details = {}) {
   });
   writeWorkflowResult(manifest.paths.result, manifest.paths.resultMarkdown, result);
   appendUsageLink(manifest);
+  const terminalEvidencePath = preserveTerminalEvidence(manifest);
   releaseActiveLock(manifest);
   console.log(JSON.stringify({
     type: "terminal",
+    terminalEvidencePath,
+    agentIds: manifest.agentIds ?? {},
     lifecycleStatus: manifest.lifecycleStatus,
     terminalDecision: manifest.terminalDecision,
     stopReason: manifest.stopReason,
     resultPath: manifest.paths.result,
     resultMarkdownPath: manifest.paths.resultMarkdown,
     manifestPath: manifest.manifestPath,
+    finalDelivery: finalDelivery(manifest.manifestPath),
   }));
 }
 
@@ -615,6 +673,7 @@ function advance(args) {
   if (manifest.lifecycleStatus !== "running") throw new Error("run 已 terminal，不得 advance");
   const phase = manifest.phases.at(-1);
   if (!phase || phase.status !== "running") throw new Error("沒有等待結果的 phase");
+  assertPhaseAgent(manifest, args);
   try {
     const stopPath = phase.role === "author"
       ? phase.mode === "initial" ? manifest.paths.authorInitialStop : manifest.paths.authorRepairStop
@@ -680,8 +739,22 @@ function advance(args) {
 try {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "start") start(args);
-  else if (args.command === "advance") advance(args);
-  else throw new Error("command 必須是 start 或 advance");
+  else if (["advance", "bind-agent"].includes(args.command)) {
+    if (!args.manifest) throw Error("缺少 --manifest");
+    const manifestPath = path.resolve(args.manifest);
+    const release = acquire(path.dirname(manifestPath), ".driver-command.lock");
+    try {
+      if (args.command === "advance") advance(args);
+      else {
+        const manifest = readJson(manifestPath);
+        const response = bindAgent(manifest, args);
+        writeJson(manifestPath, manifest);
+        console.log(JSON.stringify(response));
+      }
+    } finally { release(); }
+  }
+  else if (args.command === "handoff") process.stdout.write(collectHandoff(args.manifests));
+  else throw new Error("command 必須是 start、bind-agent、advance 或 handoff");
 } catch (error) {
   console.error(`lite-unit-workflow error: ${error.message}`);
   process.exitCode = 1;

@@ -61,6 +61,15 @@ if (base.status === "build_failed" && base.build?.status === "failed" &&
   }
   normalizedSupplement.coverageDecision = { status: "fail", repairable: [], uncoverable: [] };
 }
+// A runner-owned artifact failure cannot be converted into test repair or a pass.
+if (base.status === "tool_incident" && base.test?.status === "not_run" &&
+    base.runnerIncidents?.some(incident => incident.kind === "coverage_artifact_error")) {
+  if (normalizedSupplement.coverageDecision?.status !== "tool_incident") {
+    normalizedSupplement.phaseIncidents.push({ kind: "runner_artifact_decision_corrected",
+      description: "Coverage 暫存產物建立失敗且未執行 tests；依 runner 證據停止，不消耗 test-only repair。" });
+  }
+  normalizedSupplement.coverageDecision = { status: "tool_incident", repairable: [], uncoverable: [] };
+}
 const outputPath = path.resolve(input.output);
 const temporaryPath = `${outputPath}.merge.tmp`;
 fs.writeFileSync(temporaryPath, `${JSON.stringify({ ...base, ...normalizedSupplement }, null, 2)}\n`, {

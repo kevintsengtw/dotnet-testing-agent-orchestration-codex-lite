@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { runProcess, processDetails, processFailure } from '../lib/process-runner.mjs';
 import { pathToFileURL } from 'node:url';
 import { acquire, atomicJson, state } from './lifecycle.mjs';
 import { collect } from './collect-session.mjs';
-import { summarizeScope } from './scope-usage.mjs';
+import { summarizeScope, measurementScope } from './scope-usage.mjs';
 import { usageRows, creditGroups } from './usage-presentation.mjs';
 
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -24,14 +24,16 @@ export function renderResult(state) {
   return template.replace('<script>', `<script>window.acceptanceSnapshot=${JSON.stringify(state).replaceAll('<', '\\u003c')};</script><script>`);
 }
 
-export function takeSnapshot(binding, directory) {
+export function takeSnapshot(binding, directory, run = runProcess) {
   const relationFile = path.join(directory, 'relations.json');
   // discover-threads uses exclusive creation. A unique staging file prevents replacement races.
   const staging = path.join(directory, `relations-${crypto.randomUUID()}.json`);
-  const python = detectPython();
-  const result = spawnSync(python, ['-B', path.join(import.meta.dirname, 'discover-threads.py'),
-    binding.database, binding.rootThreadId, staging], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
-  if (result.status !== 0) throw new Error(`無法讀取代理關係：${result.stderr || result.error?.message}`);
+  const python = detectPython(run, directory);
+  const result = run(python, ['-B', path.join(import.meta.dirname, 'discover-threads.py'),
+    binding.database, binding.rootThreadId, staging], { encoding: 'utf8', windowsHide: true, timeout: 10000, captureRoot: directory });
+  if (result.error || result.status !== 0 || result.signal) throw Object.assign(
+    new Error(`無法讀取代理關係：${processFailure(result)}\n${result.stderr || result.stdout || ''}`),
+    { process: processDetails(result) });
   const relations = read(staging);
   fs.renameSync(staging, relationFile);
   const ids = [...new Set([binding.rootThreadId, ...relations.edges.map(e => e.childThreadId)])];
@@ -40,9 +42,49 @@ export function takeSnapshot(binding, directory) {
   return { report, captures, manifest: read(binding.manifestPath) };
 }
 
+function readBinding(directory) {
+  try { return read(path.join(directory, 'binding.json')); } catch { return null; }
+}
+
+function readWorkflowManifest(directory) {
+  try {
+    const binding = readBinding(directory);
+    return read(binding?.manifestPath || path.join(directory, '..', 'run.json'));
+  } catch {
+    // Missing or unreadable workflow evidence is unknown, not an unfinished test run.
+    return null;
+  }
+}
+
+function workflowIdentity(manifest) {
+  return manifest ? { id: manifest.runId ?? null, target: manifest.targetClass ?? null } : null;
+}
+
+function publishResult(directory, result) {
+  write(path.join(directory, 'result.json'), result);
+  fs.writeFileSync(path.join(directory, 'result.html'), renderResult(result));
+}
+
+// Terminal reporting can precede root-turn completion or follow an observer failure.
+// Preserve measured rows and diagnostics, and never race a live observer's writer.
+export function refreshWorkflowOutcome(directory, manifest = readWorkflowManifest(directory)) {
+  if (!manifest?.terminalDecision || !fs.existsSync(path.join(directory, 'result.json'))) return false;
+  let release;
+  try { release = acquire(directory); }
+  catch (error) { if (error.code === 'EEXIST') return false; throw error; }
+  try {
+    const result = read(path.join(directory, 'result.json'));
+    publishResult(directory, { ...result, outcome: manifest.terminalDecision,
+      workflow: workflowIdentity(manifest), updatedAt: new Date().toISOString() });
+    return true;
+  } finally { release(); }
+}
+
 export function saveResult(directory, snapshot, complete, message) {
+  const manifest = snapshot?.manifest || readWorkflowManifest(directory);
   const state = { done: true, updatedAt: new Date().toISOString(),
-    outcome: snapshot?.manifest.terminalDecision || null, message,
+    outcome: manifest?.terminalDecision || null, workflow: workflowIdentity(manifest),
+    measurementScope: snapshot?.report.measurementScope || measurementScope(readBinding(directory)), message,
     usageRows: snapshot ? usageRows(snapshot.report, snapshot.captures) : [],
     creditGroups: complete ? creditGroups(snapshot.report, snapshot.captures) : [],
     measurementStatus: complete ? 'observed-complete' : 'incomplete' };
@@ -50,8 +92,7 @@ export function saveResult(directory, snapshot, complete, message) {
     write(path.join(directory, 'report.json'), snapshot.report);
     for (const capture of snapshot.captures) write(path.join(directory, `${capture.metadata.id}.json`), capture);
   }
-  write(path.join(directory, 'result.json'), state);
-  fs.writeFileSync(path.join(directory, 'result.html'), renderResult(state));
+  publishResult(directory, state);
   return state;
 }
 
@@ -78,7 +119,7 @@ async function observeCore(bindingPath, { timeoutMs = 7200000, intervalMs = 2000
         signature = next;
         if (stable >= 3) {
           saveResult(directory, snapshot, true,
-            '本次 workflow 回合已完成，連續三次觀測用量一致。這是 runtime 觀測值，非帳戶實際扣抵。');
+            '本次主代理回合已完成，連續三次觀測用量一致。同回合多個 workflow 共用這筆用量，不可跨報告相加。這是 runtime 觀測值，非帳戶實際扣抵。');
           open(path.join(directory, 'result.html'));
           return;
         }
@@ -87,20 +128,30 @@ async function observeCore(bindingPath, { timeoutMs = 7200000, intervalMs = 2000
           break;
         }
       }
-    } catch (error) { lastError = error.message; stable = 0; signature = undefined; }
+    } catch (error) {
+      lastError = error.message; stable = 0; signature = undefined;
+      if (error.process) break; // A failed command is not a reason to execute it again.
+    }
     await pause(intervalMs);
   }
   saveResult(directory, snapshot, false, `用量尚未確認完整，不提供 credit 合計。${lastError || '背景觀測已達兩小時上限。'}`);
   open(path.join(directory, 'result.html'));
 }
 
-export function detectPython(run = spawnSync) {
+export function detectPython(run = runProcess, captureRoot = process.cwd()) {
+  const failures = [];
   for (const command of ['python', 'python3']) {
     const result = run(command, ['-B', '-c', 'import sys, sqlite3; assert sys.version_info >= (3, 8)'],
-      { encoding: 'utf8', windowsHide: true, timeout: 10000 });
-    if (result.status === 0) return command;
+      { encoding: 'utf8', windowsHide: true, timeout: 10000, captureRoot });
+    if (!result.error && !result.signal && result.status === 0) return command;
+    const diagnostic = `${command}: ${processFailure(result)}\n${result.stderr || result.stdout || ''}`;
+    // Only an absent executable may fall through after a launch error; EPERM is not a missing Python.
+    if (result.signal || (result.error && (result.error.code !== 'ENOENT' || result.capture?.errors?.length))) {
+      throw Object.assign(Error(`Python 執行或輸出擷取失敗：${diagnostic}`), { process: processDetails(result) });
+    }
+    failures.push(diagnostic);
   }
-  throw Error('用量收集需要 Python 3.8+ 與 sqlite3；找不到可用的 python 或 python3。Cleanup 只需要 Node.js。');
+  throw Error(`用量收集需要 Python 3.8+ 與 sqlite3；找不到可用的 python 或 python3。Cleanup 只需要 Node.js。\n${failures.join('\n')}`);
 }
 
 export async function observe(bindingPath, options = {}) {
@@ -123,6 +174,8 @@ export async function observe(bindingPath, options = {}) {
   } finally {
     process.removeListener('SIGTERM', onTerm); process.removeListener('SIGINT', onInt);
     release();
+    // Main may have reached terminal while the observer still held the writer lock.
+    refreshWorkflowOutcome(directory);
   }
 }
 

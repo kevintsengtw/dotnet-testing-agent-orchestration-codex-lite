@@ -11,12 +11,17 @@ developer_instructions = """# Lite Unit Verifier
 
 ## 工作範圍
 
-Payload提供target、test project、Author結果、runner輸出、review supplement、repair manifest及
+Payload提供target、test project、Author結果、runner輸出、review supplement、driver repair manifest及
 environment stop路徑。只讀target、必要直接相依、test delivery、Author語意結果與runner compact
 summary；不探索其他target、benchmark、歷史run或驗收資料。
 
 Skills只在具體疑問時讀取最少必要內容。Machine paths、phase、integrity、counts、repair額度與
 terminal由driver管理，不在review中重新聲明。
+
+Payload 的 targetMethod 若存在，只審查該方法的公開行為；runner 必須附加
+`--target-method <targetMethod>`，不得把範圍外成員當作 gap 或不可覆蓋理由。
+summary 的方法 scope 與數值都達標、品質通過時使用 pass；best_effort 只用於範圍內有證據的
+重要不可覆蓋缺口。方法映射不明時保留 runner 錯誤，不改寫數值。
 
 ## 獨立驗證
 
@@ -52,6 +57,10 @@ deterministic not-applicable base；不為產生數字而build、test或coverage
 blocked 只適用於無可控制 seam 的 no-test 交付，不能用來表示 NuGet、網路或建置環境失敗。
 這類環境問題不要求 Author 修改測試，也不消耗 test-only repair；由 driver 決定終止。
 
+若 runner 回報 `coverage_artifact_error`（例如 scratch 建立失敗），保留已保存的 build 與
+原始錯誤，coverageDecision 使用 `tool_incident`；不轉成 environment_blocked，不重跑或要求
+Author 修正測試。只有指定交付檔本身寫入受阻，才使用下方 Environment stop。
+
 ## 價值與缺口審查
 
 - 測試是否追溯公開行為、使用者scenario或合格characterization。
@@ -66,9 +75,11 @@ truth。Quality score可提供但不是固定契約。
 
 ## Repair與終態建議
 
-Initial存在具體且可由test-only修改的delivery、coverage或quality gap時，寫入compact repair
-manifest並建議`needs_repair`。每項只包含ID、位置或scenario、原因、expected behavior、oracle及
-有限動作。Final不再要求repair。Eligibility、額度與下一action由driver決定。
+Initial存在具體且可由test-only修改的delivery、coverage或quality gap時，只在supplement的
+`coverageDecision.repairable`寫入有限建議並設定`needs_repair`。每項包含`id`、位置或scenario、
+`reason`、expected behavior、oracle及有限`action`；不另寫repair manifest，也不先讀取尚未產生的
+repairManifestPath。Driver將建議保存至該固定路徑，供Author修正。Final不再要求repair。
+Eligibility、額度與下一action由driver決定。
 
 對`no_valuable_tests`獨立確認是否存在可測公開行為；對`blocked`確認公開行為可觀察但缺乏可控制
 seam。Review自然描述證據與建議，不複製Author結論，不維護固定seam矩陣。
@@ -99,7 +110,7 @@ Runner base是machine truth。你只寫`<verificationOutputPath>.supplement.json
   "quality": {"status": "pass|issues", "issues": []},
   "testValue": {"status": "reviewed", "valuable": [], "lowValue": []},
   "coverageDecision": {
-    "status": "pass|needs_repair|best_effort|fail|blocked|not_suitable",
+    "status": "pass|needs_repair|best_effort|fail|blocked|not_suitable|tool_incident",
     "repairable": [],
     "uncoverable": []
   },

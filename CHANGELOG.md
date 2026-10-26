@@ -4,6 +4,88 @@
 
 ## [Unreleased]
 
+## [v1.2.3] - 2026-10-26
+
+### 修正與限制
+
+- 單目標與多目標統一使用 handoff 交付；terminal action 附收尾指示，先完成證據整理再
+  取得完整正文，保留耗時與必要限制。此提示不保證模型最後回覆完整，仍須實際驗收。
+- 新增單一方法 coverage 範圍，將 `targetMethod` 傳遞至派遣、runner、摘要與最終判定；
+  driver 以原始 Cobertura 核對方法數值。多載或方法映射不明時保留限制，不改用整類數值。
+- 拒絕重複單值 target 參數；新增代理 ID／階段登記，repair／final 不得換代理，終止時保存
+  獨立證據快照。Main 仍須確認 runtime 代理停止，driver 不宣稱可自行終止外部代理。
+- 新增多目標完整 Markdown 交付介面，保留失敗、耗時與用量網址。契約失敗時保留 Verifier
+  最後品質判定，repair 檔案由 Author 正式交付資料帶入，不再依賴選用讀寫紀錄。
+
+- NuGet 前置檢查因執行遭拒、逾時或擷取失敗而無法完成時，以 `skipped` 保留診斷並
+  繼續 workflow；工具層無法啟動預檢命令時亦可略過。略過不等於還原通過，不另加
+  必須成功的 PowerShell 檢查。已執行的還原明確失敗、輸入／設定錯誤與後續必要 gate
+  仍保留原失敗判定，不因略過預檢而放寬。
+- 預檢區分檔案資訊存取遭拒與檔案不存在；Windows 執行層回傳的程式錯誤及無法辨識的
+  執行結果不會自動略過。略過須有可辨識的系統錯誤或程序中止等證據，並保留原始診斷。
+- Windows 的 NuGet 預檢、Driver、MSBuild／build gate、coverage／完整性 gate 與 Python
+  查詢共用檔案描述元擷取，stdin 為 ignore，stdout／stderr 分流；其他平台沿用原管線。
+  命令不因 EPERM 自動重跑，status 為 0 但有 error 仍失敗。保留原始錯誤、signal 與退出碼。
+- 啟動錯誤不再遺失於 coverage，Python 的執行遭拒不誤報為缺少相依；背景 observer 保留
+  非同步生命週期，程序失敗停止觀測並標示用量 incomplete。Coverage 暫存產物改置於 output 所在目錄。
+- Windows 擷取目錄採延伸路徑格式，修正深層 run 的 `mkdtemp` 發生 `ENAMETOOLONG`；
+  暫存仍位於原工作區／run，保留隔離、連結檢查與本次檔案清理。
+- Coverage scratch 同樣使用 Windows 延伸路徑；建立失敗時保存已完成的 build、未執行的
+  test 與原始檔案錯誤，以 tool_incident 停止，不要求 Author 修測試或放寬寫入邊界。
+  Environment stop 即使未通過路徑檢查，仍保留原始錯誤，避免只留下次要契約訊息。
+- Verifier 只在 supplement 交付有限 repairable 建議，Driver 產生固定路徑的 repair manifest，
+  消除兩份重複交付；保留既有 manifest 相容性與最多一次 repair。契約失敗不再遮蔽已通過
+  完整性檢查且由 runner 確認完成的 coverage，整體失敗判定不變。
+- Final renderer 的測試描述與耗時說明採明確段落間隔；Main 沿用原文交付。驗收以資訊
+  正確、完整且可讀為準，不影響語意及結果顯示的文字、標點與格式差異不列為錯誤或優先修正。
+- 用量取樣失敗時，仍獨立讀取 driver 的測試結果；結果無法取得時顯示「無法確認」，
+  不再把用量不完整顯示成測試流程尚未完成。
+- 同回合多個 workflow 可各自啟動用量觀測；HTML／JSON 明確標示整個主代理回合的共同
+  用量與相同範圍識別碼，不將共同用量誤列為單一目標，也不可跨報告相加。
+  繫結或 observer 啟動失敗時，terminal 交付與背景收尾仍更新各自的測試判定，保留
+  原始量測錯誤及 incomplete 狀態；不以空用量遮蔽已知的測試結果。
+- Windows 輸出上限在程序結束後檢查並限制讀入量；超限回報失敗，不具原 maxBuffer 的
+  即時終止語意，也不限制同步等待期間的磁碟增長。逾時沿用原設定，無 timeout 的命令仍無
+  自動截止時間。暫存清理失敗會留下階段、路徑與原因，詳見 [使用說明](docs/usage.md#windows-子程序擷取與限制)。
+- 非模型 public 快照 smoke 擴充為 net8／net9／net10；三平台 CI 由本版發布 PR 執行，
+  結果以對應 Actions 紀錄為準。公司受影響環境仍須現場驗證，不宣稱根因已排除。
+- 同步更新 Lab README、公開 README／AGENTS／workspace 設定說明，以及使用與架構文件；
+  升級使用完整 Lite 部署單位，保留使用者設定、外部 skills 與既有執行證據。
+
+### 本機驗證
+
+- 2026-10-25 handoff 修正後，五個情境完成正式模型驗收：VS Code／CLI 的
+  gpt-5.6-luna／max 分別在 EACCES／EPERM 預檢模擬後完成 TemperatureConverter；
+  VS Code gpt-6.1-sol／medium 完成 EmployeeService＋Employee 多目標；
+  VS Code gpt-6-luna／max 完成 CheckForecastAndAlertAsync 方法範圍；CLI
+  gpt-6-sol／medium 完成 Net8 ReportGenerator 完整類別。各目標測試及指定範圍
+  Line／Branch 均通過，最後回覆保留完整 handoff，用量已收尾；多目標共用用量只計一次。
+  同源前一輪 gpt-6.1 因 Main 誤發無效命令而未完成，失敗證據保留；後續未重現不代表
+  成因已修正。部分情境有 NU1900 警告；本機模擬不替代公司環境驗證或跨平台 CI。
+- 2026-10-25 完整 Node 回歸 287／287 通過；其後相關變更分別通過 31／31 與
+  handoff 契約 36／36 針對性檢查，數字不重複加總為完整測試數。另以實際 Net10
+  runner 驗證單一非同步方法，11／11 測試、Line 26／26、Branch 12／12 通過。
+- 2026-10-24 Node 回歸合計 267 項通過、0 skipped：沿用未受後續修改影響的 232 項，
+  driver 16 項與報告 19 項重跑通過。新增測試檔語法錯誤與追加測試揭露的原始錯誤訊息
+  投影問題已修正，原始失敗紀錄保留。
+  public 快照 net8／net9／net10 smoke 各 22/22 通過，目標 Line／Branch 均 100%；Net10
+  scratch 完整路徑 282 字元，成功取得 TRX／Cobertura。這是開發回歸，r3 模型驗收尚未執行。
+- 2026-10-23 長路徑修正後，Windows 完整 Node 回歸 256/256 通過，0 skipped。
+  以既有 CLI runtime 紀錄獨立重播用量收集，在 340 字元擷取路徑下收尾為
+  `observed-complete`，driver 結果為 pass；原始失敗產物未變更。這是開發復驗，
+  不替代修正版本的新一輪模型 workflow 驗收。
+- 2026-10-23 後續修正：預檢與共用執行層相關 Node 測試 63/63 通過，0 skipped；
+  略過預檢後啟動實際 driver 的定向測試 1/1 通過，未執行模型 Author／Verifier。
+- 2026-10-23 前置檢查略過規則完成後，Windows 完整 Node 回歸 242/242 通過，0 skipped；
+  包含模擬預檢執行遭拒後仍建立 run 並產生 Author 派遣、實際還原失敗仍停止、
+  直接擲出的程式錯誤不誤判為環境限制，以及後續建置失敗不放行。此完整回歸早於上述
+  後續修正；尚未完成公司端模型 workflow 驗收。
+- 2026-10-22 Windows 完整 Node 回歸 235/235 通過，0 skipped；public 快照的 net8／net9／net10
+  smoke 各 22/22 通過，預檢與 MSBuild 專案判定、TRX、Cobertura、production integrity
+  均通過，三者的目標 Line／Branch 皆 100%。此結果不代表模型 workflow 或三平台 CI 通過。
+- 本機最小探針的舊管線及新檔案擷取均成功，未重現公司端 EPERM；公司端仍須在原環境
+  完成最小對照、Author／Verifier 全流程、負向停止及用量收尾驗收。
+
 ## [v1.2.2] - 2026-10-07
 
 ### 新增

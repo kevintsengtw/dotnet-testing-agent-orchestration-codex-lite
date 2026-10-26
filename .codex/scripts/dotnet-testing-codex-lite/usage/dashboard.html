@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Codex workflow token 用量</title>
+<title>Codex 主代理回合 token 用量</title>
 <style>body{font:17px/1.7 system-ui,sans-serif;max-width:850px;margin:48px auto;padding:0 24px;color:#172b40;background:#f5f7fa}main{padding:28px;background:white;border-radius:14px}h1{font-size:26px}td,th{text-align:left;padding:8px 20px 8px 0;border-bottom:1px solid #ddd}#message{font-weight:bold;color:#174c77}small{color:#526274}code{background:#eee;padding:2px 5px}li{margin:8px 0}</style>
-<main><h1>Codex：本次 workflow 用量</h1>
+<main><h1>Codex：本次主代理回合用量</h1>
 <p id="message">正在等待 workflow 用量收尾…</p>
 <ol id="instructions" hidden></ol>
-<p>測試流程結果：<strong id="outcome">尚未完成</strong></p>
-<p>統計範圍：本次 workflow 的主代理與子代理。總量包含快取。</p><div style="overflow-x:auto"><table><tr><th>代理範圍</th><th>未快取輸入</th><th>快取輸入</th><th>輸出</th><th>總量（含快取）</th><th>請求數</th></tr><tbody id="values"></tbody></table></div>
-<p><small>總量 = 未快取輸入 + 快取輸入 + 輸出。推理用量已包含在輸出，不重複加總。這是 runtime 觀測快照，不是帳單。CLI 的退出摘要只列主代理，且 total 不含另外列出的 cached；不可直接與整個 workflow 總量比較。</small></p>
+<p id="workflow"></p><p>本 workflow 測試結果：<strong id="outcome">尚未取得</strong></p>
+<p id="scope">尚未取得統計範圍。</p><p><small id="scope-id" style="overflow-wrap:anywhere"></small></p><div style="overflow-x:auto"><table><tr><th>代理範圍</th><th>未快取輸入</th><th>快取輸入</th><th>輸出</th><th>總量（含快取）</th><th>請求數</th></tr><tbody id="values"></tbody></table></div>
+<p><small>總量 = 未快取輸入 + 快取輸入 + 輸出。推理用量已包含在輸出，不重複加總。這是 runtime 觀測快照，不是帳單。CLI 的退出摘要只列主代理，且 total 不含另外列出的 cached；不可直接與含子代理的回合總量比較。</small></p>
 <details id="credit-panel"><summary>選用：依 Standard 官方費率換算 credit</summary>
 <p>適用於 ChatGPT token-based credits；API key 與舊制企業方案不適用。結果為公開費率換算，不代表帳戶實際扣抵。</p>
 <p>GPT-6.1 Sol 官方費率查核日期：2026-10-07；其他模型保留 2026-09-23 費率版本。<a href="https://learn.chatgpt.com/docs/pricing">官方費率</a>。GPT-5.6 Sol 促銷費率官方註明至少適用至 2026-11-21。</p>
@@ -36,13 +36,16 @@ function updateCredit(){
  if(!creditActive)return;
  let total=0,missing=0,conditional=false;el('details').replaceChildren();
  for(const r of latestGroups){const p=document.createElement('p');try{const q=quoteCredit(r);total+=q.value;conditional ||= q.conditional;p.textContent=`${r.label}：${q.formula} = ${q.value.toLocaleString(undefined,{maximumSignificantDigits:12})} credits${q.conditional?'（服務模式缺漏，按 Standard 前提試算）':''}`;}catch(e){missing++;p.textContent=r.label+'：無法換算，'+e.message;}el('details').append(p);}
- el('result').textContent=missing||!latestGroups.length?'無法提供 workflow Standard credits 合計：設定、費率或用量有缺漏。':`${conditional?'Standard 前提試算合計':'Standard 模式換算合計'}：${total.toLocaleString(undefined,{maximumSignificantDigits:12})} credits（顯示值經四捨五入，非帳戶實際扣抵）。`;
+ el('result').textContent=missing||!latestGroups.length?'無法提供本統計範圍的 Standard credits 合計：設定、費率或用量有缺漏。':`${conditional?'Standard 前提試算合計':'Standard 模式換算合計'}：${total.toLocaleString(undefined,{maximumSignificantDigits:12})} credits（顯示值經四捨五入，非帳戶實際扣抵；同回合報告不可相加）。`;
 }
 el('standard').onclick=()=>{creditActive=true;updateCredit();};
 function render(s){
 latestGroups=s.creditGroups||[];updateCredit();
 document.getElementById('message').textContent=s.message;
-document.getElementById('outcome').textContent=s.outcome||'尚未完成';
+document.getElementById('workflow').textContent=s.workflow?.target?`本報告對應目標：${s.workflow.target}`:'';
+document.getElementById('outcome').textContent=s.outcome||(s.measurementStatus==='pending'?'尚未取得':s.done?'無法確認':'尚未取得');
+document.getElementById('scope').textContent=s.measurementScope?.kind==='root-turn'?'統計範圍：本主代理回合的全部主代理與子代理請求，包含同回合所有 workflow 與其他工作。各報告共用同一筆用量，不能拆分到單一目標，也不可跨報告相加。總量包含快取。':'尚未取得統計範圍。';
+document.getElementById('scope-id').textContent=s.measurementScope?.id?'共同用量識別碼：'+s.measurementScope.id:'';
 const body=document.getElementById('values');body.replaceChildren();
 for(const row of s.usageRows||[]){const tr=document.createElement('tr');for(const value of [row.label,row.uncached,row.cached,row.output,row.total,row.requests]){const td=document.createElement('td');td.textContent=typeof value==='string'?value:Number.isSafeInteger(value)?value.toLocaleString():'尚未取得';tr.append(td)}body.append(tr)}
 document.getElementById('instructions').hidden=Boolean(s.done);

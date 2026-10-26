@@ -1,4 +1,6 @@
-# Codex workspace configuration for the Lite Unit Test workflow.
+# Codex Lite v1.2.3 workspace 設定；疊加安裝時合併必要欄位，不整份覆寫既有設定。
+# Author／Verifier 的模型與推理強度由各自 .codex/agents/*.toml 定義。
+# 本檔不設定本機路徑、套件快取、故障注入或權限覆寫。
 personality = "friendly"
 
 [features]
@@ -11,4 +13,5 @@ max_depth = 1
 max_threads = 6
 job_max_runtime_seconds = 1800
 
-# Hooks are optional telemetry only. Lite timing uses target run manifests.
+# Hooks 僅為選用觀測；正式 timing 依 target run manifest。
+# 同一主代理回合的多份報告共用用量，不跨報告加總；用量失敗不改變測試判定。

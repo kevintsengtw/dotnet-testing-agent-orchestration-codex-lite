@@ -16,7 +16,7 @@ function treeHashes(directory) {
   return hashes;
 }
 
-export function beginCoverageAttempt({ outputPath, rawDirectory, retry, retryToolIncident, testProject, targetSource, targetClass, baseline, line, branch }) {
+export function beginCoverageAttempt({ outputPath, rawDirectory, retry, retryToolIncident, testProject, targetSource, targetClass, targetMethod, baseline, line, branch }) {
   assertPlainPath(outputPath); assertPlainPath(rawDirectory);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   const release = acquire(path.dirname(outputPath), `${path.basename(outputPath)}.runner.lock`);
@@ -30,6 +30,7 @@ export function beginCoverageAttempt({ outputPath, rawDirectory, retry, retryToo
     const previous = readJson(outputPath);
     const sameIdentity = previous.schemaVersion === 1 && previous.productionIntegrity?.status === 'passed' && !previous.coverageDecision &&
       previous.testProjectPath === testProject && previous.target?.sourcePath === targetSource && previous.target?.className === targetClass &&
+      (previous.target?.methodName ?? null) === (targetMethod ?? null) &&
       previous.productionIntegrity?.baselinePath === baseline && previous.thresholds?.line === line && previous.thresholds?.branch === branch;
     const retryableBuildFailure = retry && previous.status === 'build_failed' && previous.build?.status === 'failed' &&
       Number.isInteger(previous.build.exitCode) && previous.build.exitCode !== 0 && previous.test === null && previous.coverage === null;

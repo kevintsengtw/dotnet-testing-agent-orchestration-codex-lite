@@ -37,6 +37,7 @@ const coverage = base.coverage
         name: item.name,
         filename: item.filename,
       })),
+      ...(base.coverage.scope ? { scope: base.coverage.scope } : {}),
       line: base.coverage.line,
       branch: base.coverage.branch,
     }
@@ -59,6 +60,7 @@ const summary = {
     : null,
   coverage,
   goal: base.goal ?? null,
+  runnerIncidents: base.runnerIncidents ?? [],
   productionIntegrity: compactIntegrity(base.productionIntegrity),
   durationMs: base.durationMs,
 };

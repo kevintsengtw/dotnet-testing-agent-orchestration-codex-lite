@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { runProcess, processFailure } from "../lib/process-runner.mjs";
 
 function parseArgs(argv) {
   const result = { testFiles: [], allowNoTestFiles: false };
@@ -25,7 +25,7 @@ function parseArgs(argv) {
 }
 
 function evaluateProject(projectPath) {
-  const result = spawnSync(
+  const result = runProcess(
     "dotnet",
     [
       "msbuild",
@@ -40,8 +40,8 @@ function evaluateProject(projectPath) {
     ],
     { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
   );
-  if (result.status !== 0) {
-    throw new Error((result.stderr || result.stdout || "dotnet msbuild failed").trim());
+  if (result.error || result.status !== 0 || result.signal) {
+    throw new Error(`${processFailure(result)}\n${(result.stderr || result.stdout || "dotnet msbuild failed").trim()}`);
   }
   return JSON.parse(result.stdout);
 }

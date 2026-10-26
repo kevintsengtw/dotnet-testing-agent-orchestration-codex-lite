@@ -29,14 +29,39 @@ test project: tests/MyProject.Tests/MyProject.Tests.csproj
 
 可直接附上 scenarios與資料；Author會逐項保留、拒絕或標記限制。
 
+若只測單一方法，明確指定 `target method: 方法名稱`；流程會以該方法的行／分支覆蓋率判定，
+不把其他成員列為缺口。同步方法、非同步狀態機及可對應的編譯器生成方法由 Cobertura 對應；
+遇到多載無法唯一辨識、找不到方法或不支援的產物時，回報限制，不退回整類數值或宣稱達標。
+測試品質仍須驗證公開行為，不因 coverage 達標而略過重要例外與互動斷言。
+
+多個目標會逐一建立 run；同一測試專案串行執行，保留先前測試。最終交付包含所有目標的完整
+結果、階段耗時及用量網址，失敗也保留。driver 拒絕重複的單值 target 參數，避免只執行最後
+一個目標。共同回合用量仍只能計一次。
+
+Main 會登記 runtime 回傳的代理 ID 與 driver 階段識別碼，repair／final 沿用原代理；ID 查詢
+失敗時不直接重派。終止時另保存 `terminal-evidence` 與 SHA-256 清單，保留當時的交付與失敗
+證據；快照不能阻止仍在執行的代理寫入原檔，Main 須確認代理停止後才啟動下一個 run。
+
 若 test csproj 尚不存在，Lite Orchestrator 會以 `testProjectMode=create`
 交給 Lite Unit Author。Lite Unit Author 必須建立可直接 `dotnet test` 的最小專案，遵守 repo
 既有 target framework、中央套件版本與 project reference；不需要使用者先建立
 空白 csproj。
 
 Lite Orchestrator 在建立 run 前，會用目前 Codex 沙箱的快取與套件來源預檢 `dotnet restore`。
-既有 test csproj 優先；尚未建立時預檢 target 對應的來源專案。若還原失敗，會回報阻礙與
-處理建議並停止派遣，不留下本次 run。來源專案預檢通過不保證後續新增的測試套件已有快取。
+既有 test csproj 優先；尚未建立時預檢 target 對應的來源專案。預檢是輔助檢查，
+無法執行時不能成為 workflow 的強制阻擋點；不另加必須成功的 PowerShell 能力檢查。
+
+- `ready`：當下指定專案還原成功，繼續 workflow；不保證後續新增的套件已有快取。
+- `skipped`：啟動遭拒、逾時、輸出擷取失敗或檢查所需資訊無法讀取，保留原始診斷後
+  繼續 workflow。命令正常回傳此 JSON 時退出碼為 0，但 `restoreVerified=false`，
+  不表示還原成功。若 PowerShell／Node 命令在工具層就無法執行、未取得 JSON，
+  Main 亦保留工具錯誤並記錄略過，再嘗試啟動 driver。
+- `blocked`：輸入／設定不合法，或已執行的還原明確以非零退出碼回報失敗，保留診斷
+  並停止派遣，不留下本次 run。未辨識的輸出或程式錯誤不得自行當成可略過。
+
+略過只適用於前置預檢，後續 driver、實際建置、測試、coverage 與完整性檢查仍依原規則
+判定。若必要步驟也受限，會在該步驟如實回報；不因前置檢查略過而偽造通過。
+預檢只執行一次，不因執行受限提高權限或自動重跑。
 一般啟動不需要設定 `NUGET_PACKAGES`，也不需要為 NuGet 手動修改 `.codex/config.toml`。
 未設定時預檢直接執行 `dotnet restore`，不傳 `--packages`，沿用既有 `NuGet.Config`、
 `globalPackagesFolder` 或 NuGet 預設快取。若已明確設定 `NUGET_PACKAGES`，預檢會檢查該值
@@ -58,8 +83,8 @@ codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES=
 ```
 
 預檢及部署不會自動加入 NuGet override、修改使用者層設定、開啟網路或放寬權限。
-依組織允許的方式處理問題後，回到指定工作區，從預檢開始重新執行完整 workflow；
-預檢通過不保證後續新增的測試套件已有快取。
+`blocked` 時依組織允許的方式處理問題後，再從指定工作區重新執行；
+`skipped` 不要求先修好預檢，直接交由後續必要步驟判定。
 
 ## 直接執行 coverage runner
 
@@ -71,8 +96,75 @@ codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES=
 `.codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs`。
 每次使用新的 output 路徑，runner 會保留 TRX、Cobertura 與 production integrity 結果。
 
-升級 v1.2.2 須更新完整 Lite 部署資產；若下游整合固定使用 Release archive，
-應記錄新 Release 的 exact commit 與 archive SHA-256。舊版 tag 保持不變。
+升級至 v1.2.3 時須更新完整 Lite 部署資產，包含新的
+`lib/process-runner.mjs`、`lib/repair-manifest.mjs` 與 `lib/workflow-control.mjs`，
+以及對應的角色與技能；只替換預檢腳本不足以涵蓋 Driver、gate、coverage 與用量查詢。
+若下游整合固定使用 Release archive，正式發布後應記錄新 Release 的 exact commit 與
+archive SHA-256。部署保留使用者設定、外來檔案及舊 run；舊版 tag 保持不變。
+
+## v1.2.3 Windows 模型驗收
+
+2026-10-25 在 Windows 的 CLI／VS Code 完成下列五個情境；各情境均核對原始
+TRX／Cobertura、production 雜湊、完整最後回覆及收尾後用量。
+
+| 介面與模型／強度 | 目標 | 測試 | Line／Branch |
+|---|---|---|---|
+| VS Code gpt-5.6-luna／max | TemperatureConverter；EACCES 預檢模擬 | 30／30 | 39／39、22／22 |
+| CLI gpt-5.6-luna／max | TemperatureConverter；EPERM 預檢模擬 | 26／26 | 39／39、22／22 |
+| VS Code gpt-6.1-sol／medium | EmployeeService＋Employee | 最後共用專案 69／69 | 兩目標皆 100% |
+| VS Code gpt-6-luna／max | CheckForecastAndAlertAsync 單一方法 | 11／11 | 方法 26／26、12／12 |
+| CLI gpt-6-sol／medium | Net8 ReportGenerator 完整類別 | 15／15 | 89／89、14／14 |
+
+多目標的 69 個測試包含第一輪 46 個，不相加為 115。兩份報告共用一筆 root-turn 用量，
+皆顯示相同範圍識別碼；最後回覆保留兩份完整報告。所有成功情境的 production 均未修改。
+部分 CLI build 有 NU1900 弱點資料來源警告；證據整理時的命令錯誤及 observer log
+暫時無法計算雜湊等限制均保留，不能解讀為所有環境操作都沒有錯誤。
+
+首批 gpt-6.1 多目標曾因 Main 誤發無效 driver 命令而未完成；後續使用新目錄通過，
+原失敗證據保留，不代表已修正模型產生無效命令的成因。本機 EACCES／EPERM 模擬
+不能取代公司現場驗證；跨平台 CI 以 v1.2.3 發布 PR 的 Actions 紀錄為準。
+
+指定方法時由 Main 傳入 `--target-method`，各階段保留同一 scope；無法唯一識別的方法
+明確回報限制，不使用整類數值宣稱達標。單目標與多目標皆由 `handoff` 交付完整正文，
+先完成證據整理再取得正文，保留耗時、異常、交付路徑及用量限制。
+
+## Windows 子程序擷取與限制
+
+v1.2.3 將 Lite 的 8 處同步子程序呼叫集中到共用執行層。Windows 使用
+`stdio: ['ignore', stdoutFd, stderrFd]`：stdout 與 stderr 各寫一個檔案，程序結束後
+分別讀回，gate 的 JSON 不混入 stderr。其他平台維持原本的管線方式。背景 observer
+仍採非同步啟動及原本的 log 描述元，不因這項修正改為同步等待。
+
+暫存位於入口工作區的 `.orchestrator/process-output/capture-*`；observer 的查詢暫存
+位於該 run 的 usage 目錄下同名相對路徑。預檢不為此建立 run 或 active-run 鎖。
+Windows 擷取目錄使用延伸路徑格式，支援深層專案與 run 路徑，保留相同的隔離及清理範圍。
+Coverage 的 TRX／Cobertura 工作暫存則位於指定 output 所在目錄的 `.coverage-scratch-*`，
+同樣以 Windows 延伸路徑建立，收集後移入該次 `.raw` 證據目錄。兩者均不依賴家目錄或系統 TEMP 可寫。
+Scratch 建立失敗時，runner 保存已完成的 build、test 未執行狀態與原始錯誤，以 tool_incident
+停止；不要求 Author 修測試。寫入邊界檢查仍生效，契約錯誤也保留原始診斷。
+
+用量收集失敗時，測試結果仍依 driver 紀錄呈現；讀不到測試結果時顯示「無法確認」。
+用量 `incomplete` 不等於測試未完成，也不提供完整 token／credit 合計。
+
+Windows 的上限是**程序結束後的各串流讀入量**：預檢 2 MiB、MSBuild／build gate 與
+coverage 的 dotnet 呼叫 10 MiB、Driver 20 MiB；未指定上限的 Python／完整性 gate
+使用 1 MiB。超限回報 `ENOBUFS` 及 `output-limit`，不得把截斷輸出視為成功。
+它不提供原 `maxBuffer` 的即時終止能力，亦不限制執行期間的磁碟增長；持續輸出的程序
+可能用盡磁碟。預檢保留 120 秒、Python 保留 10 秒逾時，其他原本未指定 timeout 的命令
+仍無自動截止時間。這個方案不適合要求硬性磁碟配額或超限即停的環境。
+
+一般結束與失敗均嘗試關閉描述元並刪除本次檔案；空的共用父目錄會保留。準備、讀取、
+關閉或清理失敗會以 `capture.errors` 的階段及路徑回報，即使 status 為 0 仍失敗。
+原始執行錯誤的 code／syscall／message、status 與 signal 保留於 process 診斷。
+`EPERM`／`EACCES` 不等於缺少 SDK 或 Python，也不足以判定原生失敗原因；命令不因此
+自動重跑，用量程序失敗會停止觀測並回報 incomplete。
+
+強制中止父程序或後代程序仍持有檔案時，可能留下暫存。先確認相關程序已停止，再核對
+診斷指出的唯一 `capture-*` 或 `.coverage-scratch-*` 目錄並只清除該目錄；不要清空
+`.orchestrator` 或其他 run。逾時不保證整棵程序樹都已終止，也沒有下次啟動自動掃除。
+
+公司端舊環境已觀察到預設管線失敗而 inherit 成功；本版檔案擷取與完整 workflow
+仍待該環境實測。這項狀態不要求修改權限、停用沙箱或以管理員身分作為修正前提。
 
 ## 結果
 
@@ -93,6 +185,9 @@ author／project validation／coverage／run JSON、`result.json` 與 `result.md
 輸入重現且有重要價值的缺口列為 `repairable`。
 
 workflow 對 coverage 與 quality 共用一次 repair 額度，避免 token 無上限成長。
+Verifier 的有限修正建議只寫入 supplement 的 `coverageDecision.repairable`；Driver 保存
+固定路徑的 repair manifest，Author 依其中的建議修正。空白或不可讀的建議不會被補成任意
+修正內容，final 不得要求第二輪 repair。
 
 最終結果把 lifecycle、decision 與 stop reason 分開。`blocked` 表示整個 target
 確實缺少可用 production seam；環境寫入保護或 collector／CLI 事故分別以
@@ -128,6 +223,12 @@ Credit 使用網頁標示查核日期的費率版本；它是參考試算，不�
 
 ### v1.2.2 第一項 Windows 人工驗證
 
+2026-10-08 已將 `C:/Temp/v1.2.2-*` 的驗證工作區與發布紀錄完整搬移至 Lab
+本機 `.workflow/v1.2.2-archive-20261008/`，逐檔比對搬移前後的 SHA-256。
+以下執行日期與原工作區路徑保留為歷史記錄，原始證據目錄改列封存後的 repo 相對路徑；
+來源與目的地對照保存在封存目錄的 `manifest.json`。封存內容供查核，內含的原絕對路徑
+未改寫；raw 產物不簽入 Git，也不發布至 public。
+
 2026-10-07 在 `C:/Temp/v1.2.2-gpt-6.1-sol-temperature-acceptance/cli` 的獨立工作區，
 對 net10 `TemperatureConverter` 執行正式 Lite workflow（run
 `20261007060226-TemperatureConverter-ead1269a`）。32/32 測試通過，0 失敗／略過；
@@ -160,7 +261,7 @@ CLI 退出的 `total=58,923` 等於主代理未快取輸入 54,846 加輸出 4,0
 `usage/result.json`、`usage/result.html` 與收集紀錄；不簽入 raw run 產物。
 
 ```text
-C:/Temp/v1.2.2-gpt-6.1-sol-temperature-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007060226-TemperatureConverter-ead1269a/TemperatureConverter
+.workflow/v1.2.2-archive-20261008/v1.2.2-gpt-6.1-sol-temperature-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007060226-TemperatureConverter-ead1269a/TemperatureConverter
 ```
 
 ### v1.2.2 第二項 Windows 人工驗證（部分完成）
@@ -201,7 +302,7 @@ Author 結果路徑與 manifest 指定路徑一致，該檔確實不存在。測
 `usage/result.json`、`usage/result.html` 與收集紀錄，保留於以下目錄：
 
 ```text
-C:/Temp/v1.2.2-gpt-6.1-sol-weather-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007062513-WeatherAlertService-0e36b915/WeatherAlertService
+.workflow/v1.2.2-archive-20261008/v1.2.2-gpt-6.1-sol-weather-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007062513-WeatherAlertService-0e36b915/WeatherAlertService
 ```
 
 ### v1.2.2 修正後 Windows 人工驗證
@@ -238,7 +339,7 @@ CLI 退出的 34,604 等於主代理未快取輸入 30,298 加輸出 4,306；再
 `result/result.json`、`usage/result.json`、`usage/result.html` 與收集紀錄，保留於：
 
 ```text
-C:/Temp/v1.2.2-gpt-6.1-sol-subscription-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007065004-SubscriptionService-d75356fe/SubscriptionService
+.workflow/v1.2.2-archive-20261008/v1.2.2-gpt-6.1-sol-subscription-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007065004-SubscriptionService-d75356fe/SubscriptionService
 ```
 
 ### v1.2.2 多情境 Windows 人工驗證
@@ -273,7 +374,7 @@ Verifier 保留公開 null 與非 null 邊界案例的證據，未以反射或�
 本機原始證據保留於：
 
 ```text
-C:/Temp/v1.2.2-gpt-6.1-sol-order-validator-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007080550-OrderValidator-3e823aed/OrderValidator
+.workflow/v1.2.2-archive-20261008/v1.2.2-gpt-6.1-sol-order-validator-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007080550-OrderValidator-3e823aed/OrderValidator
 ```
 
 同日以獨立工作區的 net10 `OrderProcessingService` 執行 run
@@ -313,7 +414,7 @@ C:/Temp/v1.2.2-gpt-6.1-sol-order-validator-acceptance/cli/samples/unit/practice/
 最終 build／test 通過。本機原始 run 證據保留於：
 
 ```text
-C:/Temp/v1.2.2-gpt-6.1-sol-order-processing-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007082946-OrderProcessingService-14a6255b/OrderProcessingService
+.workflow/v1.2.2-archive-20261008/v1.2.2-gpt-6.1-sol-order-processing-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007082946-OrderProcessingService-14a6255b/OrderProcessingService
 ```
 
 第三個擴充情境為 net10 `ConfigurationLoader`，run
@@ -353,7 +454,7 @@ Session 檔名為
 為空。本機原始證據保留於：
 
 ```text
-C:/Temp/v1.2.2-gpt-6.1-sol-configuration-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007085207-ConfigurationLoader-5286769c/ConfigurationLoader
+.workflow/v1.2.2-archive-20261008/v1.2.2-gpt-6.1-sol-configuration-acceptance/cli/samples/unit/practice/tests/Practice.Core.Net10.Tests/.orchestrator/runs/20261007085207-ConfigurationLoader-5286769c/ConfigurationLoader
 ```
 
 這批三個擴充情境均完成正式 Author／Verifier 交付與 GPT-6.1 Sol 的報表換算核對；
@@ -445,8 +546,9 @@ Verifier 角色；runtime 用量收尾後，主代理及兩個子代理均記錄
 Codex CLI／Extension 的一般 Lite workflow 提示詞會由 driver 自動啟動用量背景觀測；不需另跑
 驗收 PS1。回合完成後會更新 `runRoot/usage/result.html`，最終報告提供可複製的網址，
 提供主代理與子代理的用量及選用 Standard credit 試算，不需 `/exit`。
-目前限一個主代理回合內的一個 workflow。不自動開啟瀏覽器。
-Windows 的 CLI 與 Extension 已使用明確指定 Lite skill 的提示詞，完成最新部署的實際用量收集及網址交付驗收；Runtime 提交 `82f3dd3` 的遠端三平台 CI 已通過。
+同一主代理回合可依序執行多個 workflow，報告各自保留測試判定，但用量是整個回合的共同統計。
+相同 `measurementScope.id` 的報告不能相加，也不能視為個別目標的獨立用量；跨回合續跑仍未支援。不自動開啟瀏覽器。
+同回合多 workflow 行為已完成上述 v1.2.3 多目標模型驗收；先前 Runtime 提交 `82f3dd3` 的三平台 CI 僅為歷史證據，本版 CI 仍以本版發布 PR 的 Actions 紀錄為準。
 條件、停用方式與失敗處理見 [Codex 自動用量說明](../.codex/scripts/dotnet-testing-codex-lite/usage/README.md)。
 
 每次執行會新增獨立 run 目錄，用量與測試證據不會自動清除。跨平台清理工具預設只預覽；
@@ -562,7 +664,7 @@ Runner 在 `<output>.attempts/<識別碼>/failed.json` 保存前次失敗 base�
 
 ## 用量失敗與工作區權限
 
-用量收集若在建立回合索引或啟動 observer 時失敗，正式報告會明示沒有可用統計；若診斷 HTML 已建立，也會提供診斷網址。診斷頁不代表已收集到用量，不能用來判定帳戶扣抵。資料仍依預設留存、明確清除政策處理。
+用量收集若在建立回合索引或啟動 observer 時失敗，正式報告會明示沒有可用統計；若診斷 HTML 已建立，也會提供診斷網址。Workflow 結束及 observer 收尾時會更新測試判定，包含繫結檔案缺漏或量測啟動失敗的情況；用量仍保留 incomplete，不捏造數字。診斷頁不代表已收集到用量，不能用來判定帳戶扣抵。資料仍依預設留存、明確清除政策處理。
 
 建置工具寫入受測專案或測試專案的標準 `bin`／`obj` 目錄遭拒時，流程可記錄為環境停止；這不授權修改 production 原始碼，也不把未完成的建置／測試判定為通過。
 

@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { repairManifestErrors } from "./lib/repair-manifest.mjs";
 
 const argv = process.argv.slice(2);
 const manifestIndex = argv.indexOf("--manifest");
@@ -76,27 +77,7 @@ function validateRepairManifest(decision) {
   }
   try {
     const repair = JSON.parse(fs.readFileSync(manifest.repairManifestPath, "utf8"));
-    if (repair.schemaVersion !== 1) errors.push("repair manifest schemaVersion must be 1");
-    for (const field of ["coverageGaps", "qualityGaps"]) {
-      if (repair[field] !== undefined && !Array.isArray(repair[field])) {
-        errors.push(`repair manifest ${field} must be an array when present`);
-      }
-    }
-    const gaps = [
-      ...(Array.isArray(repair.coverageGaps) ? repair.coverageGaps : []),
-      ...(Array.isArray(repair.qualityGaps) ? repair.qualityGaps : []),
-      ...(repair.testDeliveryGap ? [repair.testDeliveryGap] : []),
-    ];
-    if (gaps.length === 0) errors.push("repair manifest requires at least one finite gap");
-    for (const [index, gap] of gaps.entries()) {
-      if (!gap || typeof gap !== "object") {
-        errors.push(`repair gap ${index} must be an object`);
-        continue;
-      }
-      for (const field of ["id", "reason", "action"]) {
-        if (!nonEmpty(gap[field])) errors.push(`repair gap ${index}.${field} is required`);
-      }
-    }
+    errors.push(...repairManifestErrors(repair));
   } catch (error) {
     errors.push(`repair manifest is invalid: ${error.message}`);
   }

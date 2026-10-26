@@ -18,12 +18,13 @@ export function claimTurn(workspace, manifest, identity) {
   if (!inside(workspace, manifestPath)) throw Error('用量繫結只能指向已部署工作區內的 run');
   const directory = indexDirectory(workspace);
   fs.mkdirSync(directory, { recursive: true });
-  const key = crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+  // Each run owns its registration. Runs in the same root turn share usage, not an exclusive claim.
+  const key = crypto.createHash('sha256').update(JSON.stringify([identity, manifestPath])).digest('hex');
   const file = path.join(directory, `${key}.json`);
   try {
     fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, workspace, workflowId: manifest.runId, manifestPath }), { flag: 'wx' });
   } catch (error) {
-    if (error.code === 'EEXIST') throw Error('此工作區的同一主代理回合已繫結 workflow；請另開回合。');
+    if (error.code === 'EEXIST') throw Error('此 workflow 已繫結主代理回合，不重複啟動用量觀測。');
     throw error;
   }
   return file;

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 const authorInitialStatuses = new Set([
   "completed",
   "partial",
@@ -130,6 +132,7 @@ export function startPhase(manifest, role, mode, artifactPath, now = Date.now())
   }
   if (mode === "repair") manifest.repairUsed = true;
   manifest.phases.push({
+    dispatchId: randomUUID(),
     role,
     mode,
     status: "running",
