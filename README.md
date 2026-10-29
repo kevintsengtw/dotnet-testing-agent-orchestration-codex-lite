@@ -1,56 +1,27 @@
 # .NET Testing Agent Orchestration for Codex Lite
 
+在 Codex CLI 或 VS Code Extension 中，為 .NET 類別或單一方法建立並驗證 xUnit 單元測試。
+Author 負責測試設計與撰寫，Verifier 獨立執行 build、test、目標覆蓋率與品質審查。
+Production 程式碼保持唯讀；需要補測時，最多進行一輪修正與最終驗證。
 
-Lite driver 不產生 token 估算，也不把用量數字寫入 machine result。支援的 Codex CLI
-與 VS Code Extension 會在一般 Lite workflow 回合外自動觀測 runtime 用量，並在最終報告
-附上本機網頁網址；觀測值不是帳單。以下既有 benchmark 數值屬歷史實驗，不是本次執行的用量報告。
-只處理 .NET Unit Test 的輕量、自含 Codex workflow。它以兩個專責 subagent
-降低重複 context，並用實際 build、test 與 target-scoped coverage 驗證結果。
+本 repo 包含完整 Lite runtime、兩個專責 agent、所需 skills，以及 .NET 8／9／10
+空白測試練習專案。安裝與執行方式見下方說明。
 
-## v1.2.3（2026-10-26）
+## v1.2.4 更新摘要
 
-- Windows 同步子程序分流擷取與長路徑修正；輔助預檢無法完成時可略過，但實際還原失敗
-  與後續必要檢查仍停止。
-- 支援指定單一方法的 coverage；代理身分登記及終態證據快照保留每個目標的執行證據。
-- 單目標與多目標統一交付完整報告，保留測試內容、耗時、異常、限制與用量網址。
-- 同回合多份報告共用一筆用量，各自保留測試判定，不跨報告重複加總。
+- **更清楚的還原診斷**：NuGet 預檢無法完成或還原失敗時，最後回覆直接列出專案、狀態、
+  可取得的退出碼與關鍵原始錯誤，缺漏與裁切如實標示。
+- **交接與交付檢查**：交接紀錄綁定本次 run 與代理；Author 交付前檢查情境與實際測試
+  方法的對應，避免把測試替身的輔助方法誤列為測試。Driver 保留獨立契約檢查。
+- **可追溯的測試摘要**：保留使用者情境原文、明確的情境分類，以及修正前計畫與最終
+  測試數的統計範圍。已確認 run 的交接失敗會留下失敗報告與可取得的證據。
+- **Terra credit 換算**：用量網頁新增 gpt-6.1-terra 的保存費率，列出各代理與合計試算；
+  服務模式缺漏時明示 Standard 前提，未知模型不套用其他模型費率。
 
-五個 Windows CLI／VS Code 情境已完成模型驗收，包含預檢故障模擬、多目標、單一方法
-及 Net8 完整類別。公司受影響環境仍須現場驗證；跨平台 CI 以發布 PR 紀錄為準。
-完整變更與限制見 [CHANGELOG](CHANGELOG.md) 與 [v1.2.3 驗收摘要](docs/usage.md#v123-windows-模型驗收)。
-
-## 用量網頁與 credit 試算
-
-在 Codex CLI 或 VS Code Extension 執行 Lite workflow 後，最終報告會提供可複製的本機網頁網址。開啟網頁即可查看本主代理回合與子代理的未快取輸入、快取輸入、輸出、總 tokens 及請求數。同回合多個 workflow 共用一筆回合用量，報告標示相同的統計範圍識別碼，不能相加或拆算成各目標獨立用量；各 workflow 的測試判定仍分別顯示。背景觀測完成後，頁面會顯示用量已收尾；不需要退出 Codex 或另跑收集命令，也不會自動開啟瀏覽器。
-
-展開網頁的「選用：依 Standard 官方費率換算 credit」，再按「按 Standard 模式換算」，即可查看各代理與合計試算。頁面同時列出模型、推理強度、服務模式、保存的費率版本與計算公式。**這是依 Standard 前提換算的參考值，不是帳戶實際扣抵；服務模式未記錄時仍會明示未知。**
-
-v1.2.2 加入 `gpt-6.1-sol`：依 2026-10-07 查核的官方 Standard 費率，每百萬未快取
-輸入／快取輸入／輸出為 50／2.5／250 credits；既有 GPT-6 Sol、Luna、Astra 換算保留。
-
-操作步驟、已驗收的用量範例及保存方式見[用量網頁與 credit 試算](docs/usage.md#用量網頁與-credit-試算)。
-
-v1.2.2 的 Windows Codex CLI 完整驗證中，net10 `SubscriptionService` 54/54 測試通過，
-Line／Branch 皆 100%，主代理、Author、Verifier 均為 `gpt-6.1-sol`／`medium`。
-實際用量報表的 Standard 前提 credit 合計 11.77946，與獨立重算一致；服務模式未記錄。
-詳細情境與限制見[修正後人工驗證](docs/usage.md#v122-修正後-windows-人工驗證)。
-
-v1.2.1 的 Windows Codex CLI 完整驗證中，NuGet 預檢回傳 `ready`、`packages: null`，
-32/32 測試通過，Line 39/39、Branch 22/22（皆 100%）。主代理、Author 與 Verifier 均為
-`gpt-6-sol`／`medium`；整個 workflow 用量 1,298,262 tokens（含快取）、39 requests。
-保留 `NU1900` 弱點資料查詢警告。詳細條件與用量範圍見
-[使用說明](docs/usage.md#v121-windows-完整流程驗證)。
-
-以下 v1.2.0 的 Windows Codex CLI 完整驗證為歷史紀錄：NuGet 預檢回傳 `ready`，32/32 測試通過，
-Line／Branch coverage 均為 100%。主代理、Author 與 Verifier 的 runtime 模型均為
-`gpt-6-sol`／`medium`；用量 963,642 tokens（含快取），依頁面保存費率的 Standard
-前提試算為 10.54162 credits，非帳戶實際扣抵。完整條件見[使用說明](docs/usage.md#v120-完整流程驗證)。
-
-![Windows CLI 驗收的用量網頁：各代理用量與 Standard 前提 credit 試算](docs/images/workflow-usage-credit.png)
-
-圖為 2026-09-08 的歷史 Windows CLI 驗收，使用當時的 GPT-5.6 Sol 配置：50 requests、
-1,769,022 tokens（含快取），依當時頁面保存費率的 Standard 前提試算為 36.1758 credits，
-非帳戶實際扣抵；上方 v1.2.0 驗證沒有使用這張截圖。
+修改後已完成本機 Node 316／316、三個 .NET 版本 smoke 各 22／22，以及 Extension／
+Windows Terminal CLI 人工對照。三代理 gpt-6.1-terra／xhigh 的六次流程均通過，
+包含兩入口的 repair／final 與 credit 換算。完整變更、驗證範圍與已知限制見
+[CHANGELOG](CHANGELOG.md#v124---2026-10-29)。
 
 ## Workflow
 
@@ -70,13 +41,18 @@ Lite Orchestrator
 | `.codex/agents/dotnet-testing-lite-unit-author.toml` | GPT-6 Sol（`gpt-6-sol`） | `medium` |
 | `.codex/agents/dotnet-testing-lite-unit-verifier.toml` | GPT-6 Sol（`gpt-6-sol`） | `medium` |
 
-兩個 Lite agent 都預設使用 GPT-6 Sol／medium。用量網頁依 runtime 記錄的模型與
-Standard 費率換算 credit；目前支援 GPT-6 Sol 與 GPT-6 Luna。這項設定不改變
-workflow topology、repair 額度、coverage 規則或品質門檻；需要採用其他模型時，
-可直接調整對應 TOML 的 `model` 與 `model_reasoning_effort`。
-本版 Luna 驗收使用 `max`；選用 gpt-5.6-luna 或 gpt-6-luna 時，主對話與兩個角色維持一致設定。
+這兩個 TOML 只指定 Author／Verifier 的預設值；主對話模型在 Codex 入口選擇。
+v1.2.4 的 Terra／Luna 驗收配置不會改寫部署預設值。需要採用其他模型時，調整對應
+TOML 的 `model` 與 `model_reasoning_effort`，並在主對話選用相同設定。
+本版 gpt-5.6-luna、gpt-6-luna 驗收均使用 `max`；用量網頁保留實際 runtime 記錄。
 
 ## 使用方式
+
+Windows CLI 使用 **Windows Terminal 與 PowerShell 7**，確認分頁設定檔為 `pwsh.exe`。
+安裝 Windows Terminal 不會同時升級 PowerShell。找不到 `codex` 時，確認既有 CLI 的
+執行檔位置；若出現共用背景服務設定不相容，可選 `Run without daemon this time`。
+本機曾在 VS Code 內建終端機遇到程序建立錯誤，原因尚未確認；相關條件與操作見
+[Windows CLI 執行環境說明](docs/usage.md#v124-r1-本機驗收2026-10-27)。
 
 從已信任的 workspace root 啟動 Codex，或以 CLI 的 `-C <workspace-root>` 明確指定目錄；
 確認 repo-local skill 可見後輸入：
@@ -119,6 +95,28 @@ node .codex/scripts/dotnet-testing-codex-lite/usage/cleanup.mjs --test-project <
 
 工具不會刪除 active、仍在執行、狀態無法確認或用量 observer 尚未收尾的 run。
 
+## 用量網頁與 credit 試算
+
+Workflow 最後回覆會附上本機 HTML 網址，顯示主代理與子代理的未快取輸入、快取輸入、
+輸出、總 tokens 與請求數。背景觀測會在主代理回合完成後收尾；若頁面仍顯示等待，
+稍後重新整理即可，不需要退出 Codex 或另外執行收集命令。
+
+同一主代理回合的多個 workflow 共用一筆用量，不能跨報告相加，也不能拆成各目標的
+獨立用量；各 workflow 的測試判定仍分別顯示。推理用量已包含於輸出，不重複加總。
+
+展開「選用：依 Standard 官方費率換算 credit」，再按「按 Standard 模式換算」，
+即可查看各代理與合計試算。頁面列出實際模型、推理強度、服務模式、保存費率及公式。
+v1.2.4 收錄 gpt-6.1-terra 的費率為每百萬未快取輸入／快取／輸出 **25／1.25／125 credits**，
+查核日期為 2026-10-29；推理強度不另乘倍率。
+
+**這是保存費率的參考試算，不是帳戶實際扣款。** 服務模式缺漏時明示 Standard 前提；
+未知模型不套用其他模型費率，資訊不足時不產生合計。既有歷史 HTML 保留原始資料。
+操作與計費範圍見 [使用說明](docs/usage.md#用量網頁與-credit-試算)。
+
+![歷史 Windows CLI 用量網頁：各代理用量與 Standard 前提 credit 試算](docs/images/workflow-usage-credit.png)
+
+圖為 2026-09-08 的歷史驗收，使用當時的 GPT-5.6 Sol 配置；現行頁面另包含 Terra 費率。
+
 ## 內建資產
 
 - `.codex/agents/`：Lite Unit Author 與 Lite Unit Verifier。
@@ -142,26 +140,25 @@ workflow；AutoFixture 只在複雜 object graph 時條件式使用。
 
 ## 獨立部署與升級
 
-v1.2.3 的 Windows 同步子程序改以檔案描述元分流擷取，
-涵蓋預檢、Driver、gate、coverage 及 Python 用量查詢。公司受影響環境仍需驗證，
-不能據此宣稱公司端問題已排除。上方 v1.2.2 與更早數據為歷史驗收，
-變更與驗證範圍見 [CHANGELOG](CHANGELOG.md)。
+升級至 v1.2.4 時，更新完整 Lite 部署單位：兩個 `.codex/agents/dotnet-testing-lite-unit-*.toml`、
+Orchestrator skill、13 個 Unit skills，以及 `.codex/scripts/dotnet-testing-codex-lite/`。
+本次同時調整 Author、Orchestrator、Driver、報告與用量網頁，只替換預檢腳本會缺少其他修正。
 
-升級須使用完整 Lite 部署單位，包含新模組 `lib/process-runner.mjs`、`lib/repair-manifest.mjs`
-與 `lib/workflow-control.mjs`，以及對應角色與技能；不要只替換預檢腳本。
-Coverage scratch 使用 Windows 延伸路徑；Verifier 只交付一次修正建議，由 Driver 產生 repair manifest。
-Windows 的輸出上限在結束後檢查，不限制執行期間磁碟增長，也不等同 maxBuffer 即時終止；
-原有 timeout 設定保留。詳細限制與暫存清理見[使用說明](docs/usage.md#windows-子程序擷取與限制)。
+部署範圍為工作區；合併既有 `.codex/config.toml` 的必要欄位，保留自己的模型、套件與環境
+設定。原有明確代理 ID 交接介面仍可使用；預檢結果相容新增 `diagnosticSummary`，
+既有狀態與退出碼欄位保留。Author／Verifier 預設仍為 gpt-6-sol／medium。
 
-本次 runtime 使用 `.codex/scripts/dotnet-testing-codex-lite/`，13 個技術技能使用
-`.codex/skills/*-lite/`；不依賴 Full 部署資產。安裝範圍為工作區，不建立全域安裝。
-Release 的 ZIP 與 tar.gz 不包含 Full 專用的 `estimate-token-usage.mjs`、
-`run-state.mjs` 或根目錄 `scripts/`；`.codex/scripts/` 只允許
-`dotnet-testing-codex-lite/**`。發布流程會下載兩種 GitHub 原始碼封存檔逐份驗證並記錄 SHA-256。
-完整安裝、更新、移除與共用設定合併範例見 [使用說明](docs/usage.md#獨立安裝更新與移除)。
-舊版 runtime 只清除能以基準雜湊辨識的檔案；外來檔案、外部 skills 及歷史 runs 保留。
+既有 `.orchestrator/runs/` 與歷史用量 HTML 保留，不以新版費率回寫舊報告。
+舊 runtime 只清除能以基準雜湊辨識的檔案；外來檔案與外部 skills 保留。
+完整步驟見 [安裝、更新與移除](docs/usage.md#獨立安裝更新與移除)。
 
-## v1.1.0 deterministic workflow重整
+Windows 子程序輸出上限仍在程序結束後檢查；不限制執行期間磁碟增長，原有 timeout
+設定保留。已知限制與暫存清理見 [使用說明](docs/usage.md#windows-子程序擷取與限制)。
+
+Public 快照只包含發布白名單資產；Lab 開發腳本、原始驗收資料、生成測試及 build/run
+產物不在其中。發布流程會下載 GitHub 的 ZIP 與 tar.gz，逐份驗證資產邊界並記錄 SHA-256。
+
+## 歷史：v1.1.0 workflow 重整
 
 v1.1.0因應`dotnet-testing-agent-skills v2.4.2`，把模型責任收斂為測試語意工作，並將
 workflow state、machine truth、integrity、artifact、timing與繁中final交由
@@ -177,7 +174,7 @@ deterministic driver維護；本次將其移至 `.codex/scripts/dotnet-testing-c
 Repository tests為125/125通過；public snapshot固定為179個檔案、2個Lite agents與13個Unit
 skills。Final candidate的影響導向live批次為3/3 `hard-pass`，且production mutation為0。
 
-## v1.0.0 Lite script 命名空間驗證
+## 歷史：v1.0.0 Lite script 命名空間驗證
 
 v1.0.0 將 Lite runtime 的入口統一為 `lite-` 前綴，helper 移至
 `.codex/scripts/dotnet-testing-codex-lite/`，讓 Lite 與原版 workflow 可以共存。這次只調整 runtime
@@ -213,9 +210,9 @@ XPlat Code Coverage。Coverage 以指定 target class 的 Cobertura line／branc
 Unit Test 覆蓋，結果會保留 uncovered lines／branches 與原因。Coverage 與品質
 共用一次 repair 額度，避免反覆嘗試造成無上限成本。
 
-## 模型計價與 30-run 實驗
+## 歷史：30-run 模型實驗
 
-以下為 Standard／short-context API 美元費率與 ChatGPT Codex Credit rate，
+以下保留當時實驗採用的 Standard／short-context API 美元費率與 ChatGPT Codex Credit rate，
 單位皆為每 1M tokens；順序為 uncached input／cached input／output。
 
 | 模型與強度 | API 費率 | Codex Credit 費率 |

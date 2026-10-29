@@ -48,15 +48,53 @@ function remediationFor(kind, details) {
   }
 }
 
-function blocked(kind, message, details = {}) {
-  return { status: "blocked", kind, message, remediation: remediationFor(kind, details), ...details };
+function diagnosticSummary(status, kind, message, details, rawOutput) {
+  const lines = [
+    `NuGet 前置還原：${status} / ${kind}`,
+    `還原專案：${details.project ?? "未取得"}`,
+    `dotnet restore 退出碼：${Number.isInteger(details.exitCode) ? details.exitCode : "未取得"}`,
+    `原因：${message}`,
+  ];
+  if (status === "skipped") lines.push("還原未驗證；略過不代表還原成功。");
+  const error = details.process?.error ?? details.error;
+  if (error) {
+    const text = typeof error === "string" ? [details.code, error].filter(Boolean).join(": ")
+      : [error.code, error.stage, error.syscall, error.message].filter(Boolean).join(": ");
+    lines.push(`原始執行錯誤：${text.slice(0, 800)}${text.length > 800 ? "（已裁切）" : ""}`);
+  }
+  if (details.process?.signal) lines.push(`程序 signal：${details.process.signal}`);
+  const output = (rawOutput ?? details.output ?? "").trim();
+  if (!output) {
+    lines.push("原始輸出：未取得可用文字。");
+  } else {
+    // Select from the captured output before the legacy 4,000-character tail is applied.
+    const outputLines = output.split(/\r?\n/u);
+    const errorPattern = /\berror\b|\b(?:EACCES|EPERM)\b|access (?:is )?denied|permission denied|unauthorizedaccess|錯誤|失敗|拒絕/iu;
+    const codePattern = /\b(?:NU\d{4}|NETSDK\d{4}|MSB\d{4})\b/iu;
+    const errors = outputLines.filter(line => errorPattern.test(line));
+    const pattern = errors.length ? errorPattern : codePattern;
+    const keyLines = errors.length ? errors : outputLines.filter(line => codePattern.test(line));
+    const selected = keyLines.length ? keyLines.slice(0, 6).map(line => {
+      const start = Math.max(0, line.search(pattern) - 160);
+      return line.slice(start, start + 600);
+    }).join("\n") : output;
+    const excerpt = selected.slice(0, 1600);
+    const truncated = excerpt !== output;
+    lines.push(`原始輸出節錄${truncated ? "（已節錄／裁切）" : ""}：\n${excerpt}`);
+  }
+  return lines.join("\n");
 }
 
-function skipped(kind, message, details = {}) {
+function blocked(kind, message, details = {}, rawOutput) {
+  return { status: "blocked", kind, message, remediation: remediationFor(kind, details), ...details,
+    diagnosticSummary: diagnosticSummary("blocked", kind, message, details, rawOutput) };
+}
+
+function skipped(kind, message, details = {}, rawOutput) {
   return { status: "skipped", kind, message, restoreVerified: false,
     remediation: [...remediationFor(kind, details),
       "記錄此次預檢未完成並繼續啟動 driver；後續實際還原、建置、測試與完整性檢查仍依原規則判定。不要提高權限或自動重跑預檢。"],
-    ...details };
+    ...details, diagnosticSummary: diagnosticSummary("skipped", kind, message, details, rawOutput) };
 }
 
 const permissionDenied = error => ["EPERM", "EACCES"].includes(error?.code);
@@ -150,21 +188,22 @@ function inspectNugetSandbox({ workspaceRoot, targetSource, testProject },
       project, projectKind, packages, restoreVerified: false, rawResult: result ?? null,
     });
   }
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   if (result.error || signalled) {
     return skipped("dotnet-unavailable", "無法取得完整的 NuGet 預檢結果；略過預檢並繼續 workflow。", {
       project, projectKind, packages,
       error: result.error?.message ?? (result.signal ? `預檢被 ${result.signal} 中止` : "預檢未回傳有效退出碼"),
       exitCode: result.status ?? null,
       process: processDetails(result),
-      output: `${result.stdout ?? ""}${result.stderr ?? ""}`.slice(-4000),
-    });
+      output: output.slice(-4000),
+    }, output);
   }
   if (result.status !== 0) {
     return blocked("nuget-restore-unavailable", "指定專案在目前快取、套件來源與沙箱權限下無法還原。", {
       project, projectKind, packages, exitCode: result.status,
       process: processDetails(result),
-      output: `${result.stdout ?? ""}${result.stderr ?? ""}`.slice(-4000),
-    });
+      output: output.slice(-4000),
+    }, output);
   }
   return { status: "ready", project, projectKind, packages, restoreExitCode: 0 };
 }

@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { bindAgent, assertPhaseAgent, preserveTerminalEvidence, collectHandoff, finalDelivery } from "./lib/workflow-control.mjs";
+import { bindAgent, assertPhaseAgent, assertManifestContext, writeCompletionReceipt, preserveTerminalEvidence, collectHandoff, finalDelivery } from "./lib/workflow-control.mjs";
 import { acquire } from "./usage/lifecycle.mjs";
 import { parseCobertura } from "./lib/cobertura.mjs";
 import { runProcess, processDetails, processFailure } from "./lib/process-runner.mjs";
@@ -30,7 +30,7 @@ function parseArgs(argv) {
   const allowed = {
     start: ["--target-source", "--target-class", "--target-method", "--test-project", "--run-id", "--scenario"],
     "bind-agent": ["--manifest", "--agent-id", "--dispatch-id"],
-    advance: ["--manifest", "--agent-id", "--dispatch-id"],
+    advance: ["--manifest", "--agent-id", "--dispatch-id", "--completion"],
     handoff: ["--manifest"],
   };
   const seen = new Set();
@@ -49,6 +49,7 @@ function parseArgs(argv) {
     else if (key === "--manifest") { result.manifest = value; result.manifests.push(value); }
     else if (key === "--agent-id") result.agentId = value;
     else if (key === "--dispatch-id") result.dispatchId = value;
+    else if (key === "--completion") result.completion = value;
     else if (key === "--scenario") result.scenarios.push(value);
     else throw new Error(`未知參數: ${key}`);
     index += 1;
@@ -645,7 +646,7 @@ function finalize(manifest, decision, details = {}) {
   }));
 }
 
-function failWorkflow(manifest, error) {
+function failWorkflow(manifest, error, context = {}) {
   const phase = manifest.phases.at(-1);
   if (phase?.status === "running") {
     const completedAtEpochMs = Date.now();
@@ -662,7 +663,7 @@ function failWorkflow(manifest, error) {
       ? Math.max(0, completedAtEpochMs - phase.artifactReadyAtEpochMs)
       : null;
   }
-  manifest.workflowIncidents.push({ kind: "contract_failure", message: error.message });
+  manifest.workflowIncidents.push({ kind: "contract_failure", message: error.message, ...context });
   finalize(manifest, "fail", { stopReason: "contract" });
 }
 
@@ -673,8 +674,10 @@ function advance(args) {
   if (manifest.lifecycleStatus !== "running") throw new Error("run 已 terminal，不得 advance");
   const phase = manifest.phases.at(-1);
   if (!phase || phase.status !== "running") throw new Error("沒有等待結果的 phase");
-  assertPhaseAgent(manifest, args);
+  assertManifestContext(manifest, manifestPath);
+  if (manifest.requireAgentBinding && !phase.agentId) assertPhaseAgent(manifest, args);
   try {
+    assertPhaseAgent(manifest, args);
     const stopPath = phase.role === "author"
       ? phase.mode === "initial" ? manifest.paths.authorInitialStop : manifest.paths.authorRepairStop
       : phase.mode === "initial" ? manifest.paths.verifierInitialStop : manifest.paths.verifierFinalStop;
@@ -732,7 +735,9 @@ function advance(args) {
       qualityStatus: verification.quality?.status === "pass" ? "pass" : "issues",
     });
   } catch (error) {
-    failWorkflow(manifest, error);
+    failWorkflow(manifest, error, { operation: "advance", receivedAgentId: args.agentId ?? null,
+      receivedDispatchId: args.dispatchId ?? null, completionPath: args.completion ?? null,
+      expectedAgentId: phase.agentId ?? null, expectedDispatchId: phase.dispatchId });
   }
 }
 
@@ -747,7 +752,9 @@ try {
       if (args.command === "advance") advance(args);
       else {
         const manifest = readJson(manifestPath);
+        assertManifestContext(manifest, manifestPath);
         const response = bindAgent(manifest, args);
+        response.completionPath = writeCompletionReceipt(manifest);
         writeJson(manifestPath, manifest);
         console.log(JSON.stringify(response));
       }

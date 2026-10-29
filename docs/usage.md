@@ -67,7 +67,7 @@ Lite Orchestrator 在建立 run 前，會用目前 Codex 沙箱的快取與套�
 `globalPackagesFolder` 或 NuGet 預設快取。若已明確設定 `NUGET_PACKAGES`，預檢會檢查該值
 是否為存在且可讀的絕對目錄，再使用指定快取；不覆寫使用者設定。
 
-還原失敗時先查看回傳的原始診斷與處理建議：
+還原失敗時，Main 的最後回覆會直接保留診斷摘要；原始錯誤與處理建議的對應如下：
 
 - `NU1301`／`NU1801`：檢查錯誤指出的套件來源、連線、代理伺服器、憑證與來源驗證；
   錯誤代碼本身不能判定是網路或權限問題。
@@ -86,6 +86,166 @@ codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES=
 `blocked` 時依組織允許的方式處理問題後，再從指定工作區重新執行；
 `skipped` 不要求先修好預檢，直接交由後續必要步驟判定。
 
+## v1.2.4 交接與報告調整
+
+2026-10-29 補上 Author 交付前契約自檢與 Fact／Theory 方法映射，Main 直接沿用
+原始代理 ID；Verifier 契約及既有 gate 不放寬。Repair 摘要明示情境計畫與最終測試統計的範圍。
+用量網頁新增 `gpt-6.1-terra`：依[官方 Standard 費率](https://learn.chatgpt.com/docs/pricing#token-rates)，
+每百萬未快取輸入／快取／輸出為 **25／1.25／125 credits**（2026-10-29 查核）。
+服務模式缺漏時仍顯示 Standard 前提試算，非實際扣款；原始歷史 HTML 保留。
+修改後本機第六組四次及 r4 六次人工對照均通過；公司當版必要驗證仍待完成。
+
+
+`bind-agent` 的成功 JSON 相容新增 `completionPath`。Orchestrator 保存這個完整路徑，
+代理完成後以 `advance --manifest ... --completion ...` 交接；紀錄綁定該次 run、dispatch、
+角色與代理，不能用舊 phase 的紀錄或混用手動 ID。舊明確 ID 介面仍保留一致性檢查。
+已確認 run 身分後的交接錯誤會保留正式失敗終態、原始原因、terminal evidence 與完整四區
+handoff；Main 停止後續派遣並忠實交付。不可信 manifest 或收尾本身失敗時保留原始錯誤，
+不冒造完整結果，也不以第二次 advance 覆寫失敗終態。
+
+Author 依案例主要驗證目的明確提供正常、邊界、例外、分支、狀態或既有行為刻畫分類。
+舊資料缺少 category 時仍接受，machine result 保留 other，畫面顯示「未分類」；不從關鍵字
+猜測分類，不因呈現欄位缺漏改變測試或 workflow 判定。Main 透過 --scenario 傳入使用者
+情境原文、語言與順序，報告只做必要的表格跳脫，不先翻譯或摘要。
+
+本次調整與本機人工驗證已完成，自動化測試與人工重驗依各筆證據分開記錄：
+
+- Node 回歸 316／316 通過，net8／net9／net10 非模型 smoke 各 22／22，Line／Branch 均 100%。
+- 第六組以 ReportGenerator／.NET 8 對照 gpt-5.6-luna／max、gpt-6.1-terra／high，
+  各使用 Extension 與 Windows Terminal CLI，四次均通過，兩次 Terra credit 換算正常。
+- r4 使用三代理 gpt-6.1-terra／xhigh，在隔離工作區對照兩入口；ReportGenerator／.NET 8、
+  WeatherAlertService／.NET 9、OrderProcessingService／.NET 10 共六次均通過，
+  Line／Branch 均 100%，production 與 test integrity 通過，六次 credit 換算均已核對。
+- r4-1 Extension 與 r4-6 CLI 均完成一輪品質 repair 及原代理 final 驗證。
+  r4-3 的六筆 NU1900，以及 r4-2、r4-3、r4-6 收尾 git status 因無 .git 而失敗的紀錄保留；
+  這些紀錄不改寫已通過的測試結果，也不推定尚未確認的原因。
+
+上述用量換算仍是 Standard 前提試算。每個情境與入口僅執行一次，生成測試及 repair
+不同，不據此推論入口的速度或成本優劣。公司仍須完成當版必要情境，舊照片與使用者
+回報保留，不要求公司檔案轉出；本機結果不替代公司驗收。
+
+## v1.2.4 前置還原診斷
+
+2026-10-27 的前置還原診斷調整，在 blocked／skipped JSON 相容新增
+`diagnosticSummary`，Main 直接在最後回覆保留全文，無須展開工具輸出。摘要列出實際還原
+專案、status／kind、可取得的 `dotnet restore` 退出碼、原始啟動／擷取錯誤及關鍵輸出。
+skipped 先在進度交付摘要，最後仍保留摘要及完整 handoff，明示還原未驗證。
+
+restore 的 `exitCode` 與預檢命令退出碼不同：blocked 的預檢命令退出 1；skipped 的
+預檢命令退出 0，內層 restore 可能沒有退出碼。缺值顯示「未取得」，不補成 0 或 1。
+輸出沒有可用文字時如實顯示，不從 `nuget-restore-unavailable` 推測錯誤或原因。
+舊版 JSON 沒有摘要時，Main 從原有診斷保留必要資訊；工具層沒有 JSON 時保留工具錯誤。
+
+摘要優先從已擷取輸出選取前六行錯誤，每行至多 600 字元、合計至多 1,600 字元；
+沒有明顯錯誤行時改選錯誤代碼行，再無法辨識時保留輸出前段。超長單行保留關鍵字前
+最多 160 字元的上下文，節錄／裁切均標示。原始執行錯誤另保留最多 800 字元。
+這是有限診斷，不是完整還原紀錄；執行層尚未擷取或超限截斷的內容不能恢復。
+既有 `output` 仍保留 stdout／stderr 串接後最後 4,000 字元，`process` 等原欄位不變。
+
+本機回歸與公開快照 smoke 的實際結果列在 [CHANGELOG](../CHANGELOG.md#v124---2026-10-27)。
+回歸含模擬程序結果與隔離本機套件來源的實際還原，不等於 CLI／Extension 模型最終呈現
+或公司端驗收。先前公司 CLI 曾停在前置還原，原因未確認，重開機後無法重現；與下列
+alpha 結果分開保留，不宣稱本版已修復該歷史問題。v1.2.3 的模型結果保留為歷史證據。
+
+### v1.2.4 alpha 驗證狀態與正式版門檻
+
+alpha.1 已交付僅含 `.codex/` 的壓縮檔，其診斷變更與驗證紀錄納入後續 v1.2.4。
+2026-10-27 的實機狀態如下；公司結果依使用者說明及照片記錄，未要求公司檔案轉出。
+
+| 環境與入口 | 目標 | 實際結果與證據限制 |
+|---|---|---|
+| 公司 VS Code Extension | EmployeeService | 使用者確認成功完成並產出用量報告；測試數與 coverage 原始數值未獨立核對 |
+| 公司 VS Code terminal Codex CLI | WeatherAlertService | 使用者確認成功完成並產出用量報告；測試數與 coverage 原始數值未獨立核對 |
+| 本機隔離工作區 VS Code Extension | EmployeeService | 預檢 blocked，restore 退出 1；未建立 run，未派遣代理，完整 workflow 未完成 |
+| 本機隔離工作區 Codex CLI | WeatherAlertService | 尚未執行，等待前一情境完成 |
+
+公司兩個入口使用同一專案中的不同類別檔案，提示詞只替換類別名稱；使用者說明起初
+預檢未成功時經既有機制略過後繼續。當時具體 preflight kind 與程序錯誤未取得，不補造。
+本機失敗的原始 output 有 NU1801 與 NU1101；另建同內容專案副本，明確指定既有完整
+快取後 restore 退出 0。這項診斷沒有重跑原 workflow 或修改原設定，不能替代本機情境通過。
+
+照片顯示的 Standard 前提 credits 試算約為 21.02 與 12.24，不是實際扣款；不同用量頁與
+run 的完整對應尚未以原始產物核對，不能據此推論公司比私人電腦花費更多。
+兩份耗時報告都明示缺少 `dispatchAcceptedAt`，約十二分鐘是 workflow 經過時間，
+不能可靠拆成派遣等待、代理執行或純模型時間。
+
+自 v1.2.4 起，本機與公司電腦都必須通過當版必要實機情境，CLI／Extension 分別記錄，
+才能判定版本驗收完成。公司採文字說明及照片，註明可核對範圍；原始產物留在公司電腦。
+alpha 結果可作當版證據；候選資產或相關前提改變時，補驗受影響情境。失敗及未執行項目
+持續保留，不以手動指定快取後的診斷成功取代原情境通過。上述 alpha 本機情境未通過；
+新配置 r1 的進度見下節。整版驗收與跨平台 CI 尚未完成，不修改執行規則或發布版本。
+
+### v1.2.4 r1 本機驗收（2026-10-27）
+
+本批要求三代理均為 gpt-6-luna／max。Extension 先從空白生成測試起點完成 EmployeeService，
+再保留測試，以新互動式 CLI 對話執行同專案的 WeatherAlertService。兩個成功 run 的原始
+TRX、Cobertura、Main 最後回覆、完整性及用量對應已在本機核對，沒有重跑 workflow。
+
+| 項目 | Extension EmployeeService | Windows Terminal CLI WeatherAlertService |
+|---|---|---|
+| Target cases／共用專案通過數 | 27／27 | 23／50（含既有 27 個） |
+| Target Line／Branch | 97/97、40/40 | 76/76、30/30 |
+| Author／Verifier | 3:48.668／1:39.471 | 4:57.650／2:15.957 |
+| Workflow | 5:28.198 | 7:13.676 |
+| Tokens（含快取）／requests | 1,987,401／51 | 1,920,441／48 |
+| Standard 前提 credits 試算 | 1.4430525 | 1.2486045 |
+| 實際模型／強度證據 | 三代理 gpt-6-luna／max | 三代理 gpt-6-luna；Author／Verifier max，Main 強度未記錄 |
+
+兩輪均未使用 repair，production 與可移植資產雜湊未變。CLI 正式預檢 ready、restore
+退出 0，有 NU1900 弱點資料查詢警告，build／test 退出 0。截圖與 CLI 的
+`20261027073136-WeatherAlertService-db6c0d69` run、usage scope 及收尾產物一致。
+CLI 試算少 0.194448 credits；兩個目標與測試起點不同，Main 強度證據也不同，不能
+將差額歸因於入口或電腦。用量包含整個 Main 回合；已觀測收尾仍保留 snapshot／partial
+與服務模式未記錄的限制，不是帳戶實際扣款。
+
+CLI 先前在 VS Code terminal 的嘗試於程序建立前發生
+`helper_unknown_error: setup refresh had errors`，沒有 run 或實際 restore 退出碼；失敗保留。
+使用者確認 Windows Terminal 預設新分頁使用 PowerShell 7.6.9，但 VS Code 失敗當時及
+Codex 工具內部的 shell 版本未取得。主 session 初始 CLI 0.162.1，兩個子代理初始
+0.164.0，不能宣稱全程版本一致。根因未確認，不推定更換終端機或升級 PowerShell 即可修復。
+
+兩輪缺少 dispatchAcceptedAt，階段耗時不能歸為純模型時間。本機功能情境已完成兩個，
+其中 CLI Main 強度證據缺漏；公司新配置兩情境尚未執行。公司 alpha 兩入口成功的歷史
+仍保留，整版及三代理模型矩陣驗收尚未完成。
+
+### v1.2.4 r2 本機驗收（2026-10-27）
+
+本批改用 .NET 10，兩入口共用 Practice.Core.Net10 與 Practice.Core.Net10.Tests。
+Extension 從空白測試起點建立 SubscriptionService 測試，再保留測試，由使用者在
+Windows Terminal 的 PowerShell 7 分頁直接啟動 Extension 內附 CLI，執行 OrderProcessingService。
+兩次三代理的 runtime 記錄均為 gpt-6-luna／max，初始 CLI 版本均為 0.162.0-alpha.17.2。
+
+| 項目 | Extension SubscriptionService | Windows Terminal CLI OrderProcessingService |
+|---|---|---|
+| Target cases／共用專案通過數 | 26／26 | 36／62（含既有 26 個） |
+| Target Line／Branch | 76/76、40/40 | 79/79、44/44 |
+| Author／Verifier | 4:25.848／1:52.924 | 5:53.856／2:43.228 |
+| Workflow | 6:18.835 | 8:37.147 |
+| 整個 Main 回合，含前後處理 | 9:18.424 | 11:14.775 |
+| Tokens（含快取）／requests | 2,198,746／53 | 2,321,707／56 |
+| Standard 前提 credits 試算 | 1.416645 | 1.5487095 |
+
+兩次正式預檢均只呼叫一次，ready、restore 退出 0，build／test 也退出 0，均未使用 repair。
+CLI 有 NU1900 弱點資料查詢警告；production、可移植資產與既有 SubscriptionService
+測試雜湊未變。CLI 的截圖、run `20261027085427-OrderProcessingService-ba16e701`、TRX、
+目標 Cobertura、Main 最後回覆與用量 scope 均已在本機核對。
+
+CLI 啟動前曾找不到 codex 命令，後改用使用者選定的既有執行檔完整路徑，沒有重裝或
+修改 PATH；接著出現共用背景服務功能設定不相容。依使用者文字回覆，記錄本次選擇
+Run without daemon this time；runtime session 沒有留下該選項，證據來源不改寫為 runtime。
+這些啟動問題與 NU1900、先前 helper 錯誤分開保留，不推定相同原因或已修復。
+
+CLI 比 Extension 多 122,961 tokens、3 requests，Standard 前提試算多 0.1320645 credits。
+目標、測試起點與執行工作不同，不能解讀為入口或電腦效能差異。用量涵蓋整個 Main
+回合，已觀測收尾仍保留 snapshot／partial 與服務模式未記錄的限制，不是實際扣款。
+兩次缺少 dispatchAcceptedAt，階段耗時不能拆成派遣等待、代理產出或純模型時間。
+
+r2-1 最後回覆將 canonical handoff 末尾的全形句號改成半形，其餘全文一致，格式偏差
+保留；r2-2 完整交付 canonical handoff。情境均分類為 other，r2-2 使用者情境欄位為英文，
+保留為呈現改善建議。本次只核對既有產物，未改 runtime 或重跑 workflow、測試與 coverage。
+r2 本機兩情境功能及模型條件通過，公司兩情境未執行；r1 公司待驗與模型證據缺漏仍保留，
+不以本機或公司舊 alpha 成功取代新配置驗收，整版仍在準備。
+
 ## 直接執行 coverage runner
 
 在已部署 `.codex/` 與 `.codex/skills/` 的專案根目錄，依
@@ -96,7 +256,7 @@ codex -C 'C:\path\to\workspace' -c 'shell_environment_policy.set.NUGET_PACKAGES=
 `.codex/scripts/dotnet-testing-codex-lite/gates/check-production-integrity.mjs`。
 每次使用新的 output 路徑，runner 會保留 TRX、Cobertura 與 production integrity 結果。
 
-升級至 v1.2.3 時須更新完整 Lite 部署資產，包含新的
+升級至 v1.2.4 時須更新完整 Lite 部署資產，包含預檢腳本、Orchestrator skill 及既有的
 `lib/process-runner.mjs`、`lib/repair-manifest.mjs` 與 `lib/workflow-control.mjs`，
 以及對應的角色與技能；只替換預檢腳本不足以涵蓋 Driver、gate、coverage 與用量查詢。
 若下游整合固定使用 Release archive，正式發布後應記錄新 Release 的 exact commit 與

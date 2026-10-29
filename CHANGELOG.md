@@ -4,6 +4,67 @@
 
 ## [Unreleased]
 
+## [v1.2.4] - 2026-10-29
+
+本版於 2026-10-27 開始準備，調整與本機人工驗證於 2026-10-29 完成。
+
+### 新增
+
+- NuGet 預檢結果相容新增 `diagnosticSummary`，列出還原專案、status／kind、可取得的
+  restore 退出碼、原始執行錯誤與關鍵輸出節錄。Main 在最後回覆直接交付摘要；
+  skipped 也在進度中說明原因。缺值、空白輸出與裁切如實標示。
+- `bind-agent` 回傳 `completionPath`，以 `advance --completion` 完成交接。
+  紀錄綁定目前 run／dispatch／agent，檢查身分與結果路徑，拒絕過期或混用的交接資料。
+- 用量 HTML 收錄 gpt-6.1-terra 的 Standard 費率：每百萬未快取輸入／快取／輸出
+  25／1.25／125 credits（2026-10-29 查核）。推理強度不另乘倍率，服務模式缺漏時
+  明示 Standard 前提；未知模型不套用其他模型費率，原始歷史 HTML 保留。
+
+### 修正
+
+- Main 沿用原始 spawn ID 與 `action.agentId` 進行綁定、等待及 follow-up，避免手動重建
+  代理 ID。已確認 run 身分的交接錯誤會停止派遣，保存原始原因、失敗終態及完整報告；
+  未執行的 Verifier／測試不列為成功，不可信 manifest 仍拒絕。
+- Author 以實際 Fact／Theory 測試建立情境對應，排除替身輔助方法；initial／repair
+  交付後執行既有契約 gate 自檢，Driver 再獨立檢查。必填欄位與品質門檻保留。
+- 情境明確分類，舊交付缺少分類時顯示「未分類」；Main 保留使用者情境原文、語言及順序。
+  Repair 後摘要區分初次 scenarioPlan、最終測試原始碼與 TRX 的統計範圍，不猜測新增分類。
+- NuGet 診斷優先保留關鍵錯誤，避免只讀尾段而漏掉前段錯誤；預檢命令與內層 restore
+  的退出碼分別交付，不從缺漏資料補造數值或推測根因。
+
+### 相容性與升級
+
+- 更新完整 Lite runtime、兩個角色 TOML、Orchestrator 及 Unit skills；只替換預檢腳本
+  不足以涵蓋本版交接、報告與用量修正。既有工作區設定採合併更新，歷史 runs 保留。
+- 原有明確 ID 交接介面保留一致性檢查；NuGet 既有 JSON 欄位、最後 4,000 字元的
+  `output`、狀態判定與單次呼叫規則保留。略過預檢不代表還原成功，實際還原失敗仍停止。
+- Author／Verifier 預設仍為 gpt-6-sol／medium；最多一次 repair、Production 唯讀、
+  Verifier 測試完整性與 coverage 規則均維持既有契約。
+
+### 驗證
+
+- 修改後 Node 回歸 316／316 通過，無失敗或略過；涵蓋預檢錯誤分類、退出碼、輸出節錄、
+  交接身分、情境映射、報告及 Terra 費率換算。net8／net9／net10 非模型 smoke 各
+  22／22 通過，目標 Line／Branch 均 100%，Production integrity 通過。
+- ReportGenerator／.NET 8 使用 gpt-5.6-luna／max、gpt-6.1-terra／high，各以 Extension
+  與 Windows Terminal CLI 執行，四次均通過；兩次 Terra credit 換算已核對。
+- 三代理 gpt-6.1-terra／xhigh 的 r4 隔離配對：ReportGenerator／.NET 8、WeatherAlertService／
+  .NET 9、OrderProcessingService／.NET 10 各使用兩入口，共六次均通過，Line／Branch 均
+  100%，Production 與 test integrity 通過。Extension 與 CLI 各完成一次品質 repair／final，
+  六次用量與 Terra credit 換算均已核對。
+
+### 已知限制
+
+- Credit 為保存費率的 Standard 前提試算，非實際扣款。人工配對各執行一次，生成測試及
+  repair 不同，不據此推論入口的速度或成本優劣；runtime 缺少 dispatchAcceptedAt，
+  不將 workflow 耗時拆算為純模型時間。
+- r4 保留 NU1900 弱點資料查詢警告，以及收尾 git status 因工作區沒有 .git 而失敗的紀錄；
+  測試結果仍依實際 build、TRX、coverage 與完整性證據判定。先前 CLI 環境問題的原因
+  尚未確認，本版不宣稱已排除。歷史失敗與後續成功分開保留。
+- 本機調整與驗證完成；修改後版本的公司必要情境仍待實機驗證。公司 alpha 的使用者
+  回報保留為歷史證據，不代替修改後版本驗收。跨平台結果以本版發布 PR 的 CI 紀錄為準。
+
+使用與驗證細節見 [v1.2.4 說明](docs/usage.md#v124-交接與報告調整)。
+
 ## [v1.2.3] - 2026-10-26
 
 ### 修正與限制

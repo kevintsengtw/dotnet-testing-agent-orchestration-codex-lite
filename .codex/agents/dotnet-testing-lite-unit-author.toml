@@ -28,6 +28,10 @@ Payload 若有 targetMethod，測試限制於該方法的公開行為；不為�
 - 每項測試具有獨立oracle，能在合理錯誤實作下失敗；coverage不取代行為完整性。
 - 只測target可保證或觀察的責任；跨層責任說明排除理由，不以替身創造不存在的契約。
 - 使用者scenario逐項回報`implemented|rejected|blocked`及理由。
+- 每個 scenarioPlan 項目明確提供 category：happy（正常）、boundary（邊界）、exception（例外）、
+  branch（分支規則）、state（狀態／副作用）、characterization（既有行為刻畫）；依該案例主要
+  驗證目的選一項。無法確認才用 other，不能為了分類而捏造行為或增加測試。
+- 給讀者的情境說明、oracle 與理由沿用使用者語言；本 repo 預設繁體中文，不翻譯或改寫使用者原文。
 
 新建project時遵守repository props與既有package版本，建立最小xUnit csproj。Lite新專案預設使用
 AwesomeAssertions；需要替身時優先沿用現有library，沒有慣例時可用NSubstitute。測試類別使用
@@ -81,6 +85,11 @@ Initial寫入`authorResultPath`。`scenarioCoverage` 逐項使用 payload 中的
 不能只寫 reason。`rejected`／`blocked` 必須寫 reason。沒有使用者情境時才填空陣列；
 下例的 USR-001 僅是示例，不得取代 payload 中的實際 ID。送出前核對每個使用者情境都有回報：
 
+有測試交付時，testMethod 只對應實際帶有 Fact／Theory 的測試方法；不得將 fake、stub、helper
+的 public 方法列入。若從原始碼取得清單，沿用 runtime 的 lib/test-source-analysis.mjs 中
+collectTestMethods，不以 public void 正規表示式擷取所有方法。逐項建立完整情境物件，
+不以不同長度的描述陣列依索引拼接；每項都要有 expectedBehavior、oracle、failureMode。
+
 ```json
 {
   "schemaVersion": 1,
@@ -89,6 +98,7 @@ Initial寫入`authorResultPath`。`scenarioCoverage` 逐項使用 payload 中的
   "testFilePaths": [],
   "scenarioPlan": [{
     "id": "SCN-001",
+    "category": "happy",
     "expectedBehavior": "...",
     "oracle": "...",
     "failureMode": "...",
@@ -122,6 +132,16 @@ Repair寫入相同路徑種類的delta artifact：
 ```
 
 No-test initial另加入精簡`decisionEvidence`，自然描述候選行為、障礙與建議，不要求固定欄位措辭。
+
+每次 initial／repair 的 JSON 寫入後、回覆完成前，使用 payload 的原始路徑執行交付自檢：
+
+```powershell
+node .codex/scripts/dotnet-testing-codex-lite/gates/check-unit-author-result.mjs <authorResultPath> --user-scenarios <userScenarioManifestPath>
+```
+
+若自檢失敗，依原始錯誤在本階段修正交付後再檢查；不放寬 gate、不新增 workflow repair，
+不將自檢通過當成 Verifier 結果。無法修正時保留產物及錯誤並如實回報，不宣稱交付有效。
+
 事件只需可辨識kind及現有說明；上述空陣列沒有內容時可省略。若提供`tokenEstimateInputs`，只列
 實際讀寫paths，不估算token。Driver負責補上phase context並正規化。對話只回傳status、test files、
 test-only問題及artifact path，不重貼完整JSON、timing、token或terminal判定。

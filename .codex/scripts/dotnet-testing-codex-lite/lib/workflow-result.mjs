@@ -34,6 +34,7 @@ const phasePurpose = {
 const categoryLabels = {
   happy: "正常行為", boundary: "邊界條件", exception: "例外處理",
   branch: "分支與規則", state: "狀態與副作用", characterization: "既有行為刻畫",
+  other: "未分類",
 };
 const incidentKindLabels = {
   "build-failure": "Build 失敗", "command_error": "命令錯誤",
@@ -644,6 +645,8 @@ function renderTestContent(result) {
     `測試方法／設計情境／Target cases：${result.author.testMethods ?? "無法取得"}／${result.author.scenarioCount ?? "無法取得"}／${result.author.targetSpecificCases ?? "無法取得"}。`, "",
     `測試檔案：${list(result.author.testFiles.map((item) => code(path.basename(item))), "無")}。`,
   ];
+  if (result.repair.used) output.push("",
+    "情境摘要範圍：涵蓋類型、受測方法與設計情境數依 Author scenarioPlan；repair 採差異交付，新增測試可能未列入此計畫。測試方法數依交付原始碼、Target cases 依 Verifier TRX；修正內容見下節，不從方法名稱推測新增情境分類。");
   if (result.testScope.userScenarios.length > 0) output.push("", ...table(
     ["使用者情境", "結果", "對應測試／理由"], result.testScope.userScenarios.map((item) => [
       item.text, label(item.status, item.status), available(item.testMethod) ? code(item.testMethod) : item.reason ?? "無法取得",

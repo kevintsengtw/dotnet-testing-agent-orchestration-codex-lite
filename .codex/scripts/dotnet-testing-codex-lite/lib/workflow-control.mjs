@@ -19,9 +19,46 @@ export function bindAgent(manifest, { agentId, dispatchId }) {
   return { type: "agent_bound", role: phase.role, mode: phase.mode, agentId, dispatchId };
 }
 
-export function assertPhaseAgent(manifest, { agentId, dispatchId }) {
+export function writeCompletionReceipt(manifest) {
+  const phase = manifest.phases.at(-1);
+  const file = path.join(manifest.runRoot, "dispatch", `${phase.dispatchId}.completion.json`);
+  const receipt = { schemaVersion: 1, manifestPath: manifest.manifestPath, runId: manifest.runId,
+    role: phase.role, mode: phase.mode, agentId: phase.agentId, dispatchId: phase.dispatchId };
+  const text = JSON.stringify(receipt, null, 2) + "\n";
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  if (fs.existsSync(file)) {
+    if (fs.readFileSync(file, "utf8") !== text) throw Error("完成交接紀錄已存在且內容不符");
+  } else fs.writeFileSync(file, text, { flag: "wx" });
+  phase.completionPath = file;
+  phase.completionSha256 = crypto.createHash("sha256").update(text).digest("hex");
+  return file;
+}
+
+export function assertManifestContext(manifest, manifestPath) {
+  const real = file => fs.realpathSync(file);
+  if (real(manifest.manifestPath) !== real(manifestPath) || real(manifest.runRoot) !== path.dirname(real(manifestPath))) {
+    throw Error("manifest 與本次 run 位置不符");
+  }
+  for (const file of [manifest.paths.result, manifest.paths.resultMarkdown, manifest.paths.productionBaseline]) {
+    const relative = path.relative(manifest.runRoot, file);
+    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw Error("收尾產物必須位於本次 run");
+  }
+  const lock = JSON.parse(fs.readFileSync(manifest.paths.activeLock, "utf8"));
+  if (lock.runId !== manifest.runId) throw Error("active run identity 不一致");
+}
+
+export function assertPhaseAgent(manifest, { agentId, dispatchId, completion }) {
   if (!manifest.requireAgentBinding) return;
   const phase = manifest.phases.at(-1);
+  if (completion) {
+    if (agentId || dispatchId) throw Error("完成交接紀錄不得混用手動 ID");
+    if (!phase.completionPath || fs.realpathSync(completion) !== fs.realpathSync(phase.completionPath)) throw Error("完成交接紀錄不屬於目前 dispatch");
+    const bytes = fs.readFileSync(completion);
+    if (crypto.createHash("sha256").update(bytes).digest("hex") !== phase.completionSha256) throw Error("完成交接紀錄雜湊不符");
+    const receipt = JSON.parse(bytes);
+    if (receipt.runId !== manifest.runId || receipt.manifestPath !== manifest.manifestPath || receipt.role !== phase.role || receipt.mode !== phase.mode) throw Error("完成交接紀錄身分不符");
+    ({ agentId, dispatchId } = receipt);
+  }
   if (!phase.agentId || agentId !== phase.agentId || dispatchId !== phase.dispatchId) {
     throw Error("advance 必須提供已登記的 agent ID 與目前 dispatch ID；不得用錯誤 ID 重新派遣");
   }

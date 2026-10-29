@@ -1,4 +1,4 @@
-# Codex Lite v1.2.3 workspace 設定；疊加安裝時合併必要欄位，不整份覆寫既有設定。
+# Codex Lite v1.2.4 workspace 設定；疊加安裝時合併必要欄位，不整份覆寫既有設定。
 # Author／Verifier 的模型與推理強度由各自 .codex/agents/*.toml 定義。
 # 本檔不設定本機路徑、套件快取、故障注入或權限覆寫。
 personality = "friendly"
